@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { JSDOM } from 'jsdom';
+import { DOMParser } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 
 export async function GET(request: NextRequest) {
@@ -45,9 +45,8 @@ export async function GET(request: NextRequest) {
 
     const htmlText = await response.text();
 
-    // Parse HTML using JSDOM
-    const dom = new JSDOM(htmlText, { url: targetUrl });
-    const { document } = dom.window;
+    // Parse HTML using Linkedom
+    const document = new DOMParser().parseFromString(htmlText, 'text/html');
 
     // Detect Previous and Next chapter links before clean up
     let nextUrl: string | null = null;
@@ -89,7 +88,7 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    const links = Array.from(document.querySelectorAll('a'));
+    const links = Array.from(document.querySelectorAll('a')) as any[];
     for (const link of links) {
       const text = link.textContent?.trim().toLowerCase() || '';
       const id = link.getAttribute('id')?.toLowerCase() || '';
@@ -178,8 +177,8 @@ export async function GET(request: NextRequest) {
 
         if (ajaxRes.ok) {
           const ajaxHtml = await ajaxRes.text();
-          const ajaxDom = new JSDOM(ajaxHtml, { url: targetUrl });
-          const options = Array.from(ajaxDom.window.document.querySelectorAll('option'));
+          const ajaxDoc = new DOMParser().parseFromString(ajaxHtml, 'text/html');
+          const options = Array.from(ajaxDoc.querySelectorAll('option')) as any[];
 
           for (const option of options) {
             const title = option.textContent?.trim() || '';
@@ -199,12 +198,12 @@ export async function GET(request: NextRequest) {
 
     // 2. Fallback: Parse select elements with scoring to avoid choosing configuration dropdowns (like backgrounds/fonts)
     if (chapters.length === 0) {
-      const selectElements = Array.from(document.querySelectorAll('select'));
+      const selectElements = Array.from(document.querySelectorAll('select')) as any[];
       let bestSelectElement = null;
       let maxChapterScore = 0;
 
       for (const select of selectElements) {
-        const options = Array.from(select.querySelectorAll('option'));
+        const options = Array.from(select.querySelectorAll('option')) as any[];
         if (options.length < 2) continue;
 
         let score = 0;
@@ -252,7 +251,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (bestSelectElement) {
-        const options = Array.from(bestSelectElement.querySelectorAll('option'));
+        const options = Array.from(bestSelectElement.querySelectorAll('option')) as any[];
         for (const option of options) {
           const title = option.textContent?.trim() || '';
           const value = option.getAttribute('value') || '';
@@ -267,7 +266,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Run Readability to extract the main content
-    const reader = new Readability(document);
+    const reader = new Readability(document as any);
     const article = reader.parse();
 
     if (!article) {
