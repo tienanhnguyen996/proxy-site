@@ -12,6 +12,7 @@ interface ArticleData {
   prevUrl: string | null;
   originalUrl: string;
   chapters?: { title: string; url: string }[];
+  originalFont?: string | null;
 }
 
 function ReaderView() {
@@ -21,7 +22,7 @@ function ReaderView() {
 
   // Reader Preferences State
   const [theme, setTheme] = useState('light');
-  const [fontSize, setFontSize] = useState('normal');
+  const [fontSizePx, setFontSizePx] = useState(20);
   const [lineHeight, setLineHeight] = useState('relaxed');
   const [fontFamily, setFontFamily] = useState('serif-lora');
   const [readerWidth, setReaderWidth] = useState('normal');
@@ -64,19 +65,36 @@ function ReaderView() {
   // Initialize preferences from LocalStorage
   useEffect(() => {
     const savedTheme = localStorage.getItem('aetherread_theme') || 'light';
-    const savedFontSize = localStorage.getItem('aetherread_fontSize') || 'normal';
+    const savedFontSize = localStorage.getItem('aetherread_fontSizePx') || '20';
     const savedLineHeight = localStorage.getItem('aetherread_lineHeight') || 'relaxed';
     const savedFontFamily = localStorage.getItem('aetherread_fontFamily') || 'serif-lora';
     const savedReaderWidth = localStorage.getItem('aetherread_readerWidth') || 'normal';
 
     setTheme(savedTheme);
-    setFontSize(savedFontSize);
+    setFontSizePx(parseInt(savedFontSize));
     setLineHeight(savedLineHeight);
     setFontFamily(savedFontFamily);
     setReaderWidth(savedReaderWidth);
 
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    if (savedTheme === 'auto') {
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
   }, []);
+
+  // Listen to prefers-color-scheme changes when Auto is selected
+  useEffect(() => {
+    if (theme !== 'auto') return;
+    
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const listener = (e: MediaQueryListEvent) => {
+      document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+    };
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [theme]);
 
   // Fetch article data when targetUrl changes
   useEffect(() => {
@@ -158,7 +176,13 @@ function ReaderView() {
   const updateTheme = (newTheme: string) => {
     setTheme(newTheme);
     localStorage.setItem('aetherread_theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    
+    if (newTheme === 'auto') {
+      const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', newTheme);
+    }
   };
 
   const updatePreference = (key: string, value: string, setter: (val: string) => void) => {
@@ -166,11 +190,33 @@ function ReaderView() {
     localStorage.setItem(`aetherread_${key}`, value);
   };
 
-  const fontSizes: Record<string, string> = {
-    small: '1.05rem',
-    normal: '1.25rem',
-    large: '1.45rem',
-    'extra-large': '1.65rem',
+  const applyPreset = (presetName: string) => {
+    switch (presetName) {
+      case 'standard':
+        updatePreference('fontFamily', 'sans', setFontFamily);
+        updatePreference('fontSizePx', '20', (val) => setFontSizePx(parseInt(val)));
+        updatePreference('lineHeight', 'relaxed', setLineHeight);
+        updatePreference('readerWidth', 'normal', setReaderWidth);
+        break;
+      case 'book':
+        updatePreference('fontFamily', 'font-literata', setFontFamily);
+        updatePreference('fontSizePx', '22', (val) => setFontSizePx(parseInt(val)));
+        updatePreference('lineHeight', 'relaxed', setLineHeight);
+        updatePreference('readerWidth', 'narrow', setReaderWidth);
+        break;
+      case 'compact':
+        updatePreference('fontFamily', 'font-be-vietnam', setFontFamily);
+        updatePreference('fontSizePx', '16', (val) => setFontSizePx(parseInt(val)));
+        updatePreference('lineHeight', 'normal', setLineHeight);
+        updatePreference('readerWidth', 'wide', setReaderWidth);
+        break;
+      case 'focus':
+        updatePreference('fontFamily', 'serif-lora', setFontFamily);
+        updatePreference('fontSizePx', '24', (val) => setFontSizePx(parseInt(val)));
+        updatePreference('lineHeight', 'loose', setLineHeight);
+        updatePreference('readerWidth', 'narrow', setReaderWidth);
+        break;
+    }
   };
 
   const lineHeights: Record<string, string> = {
@@ -288,59 +334,122 @@ function ReaderView() {
       <div className="floating-settings">
         {showSettings && (
           <div className="settings-panel">
+            {/* Presets */}
+            <div className="control-group">
+              <span className="control-label">Quick Presets</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <button className="control-btn btn" style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem' }} onClick={() => applyPreset('standard')}>
+                  Standard
+                </button>
+                <button className="control-btn btn" style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem' }} onClick={() => applyPreset('book')}>
+                  📖 Book Warm
+                </button>
+                <button className="control-btn btn" style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem' }} onClick={() => applyPreset('compact')}>
+                  Compact
+                </button>
+                <button className="control-btn btn" style={{ padding: '0.4rem 0.25rem', fontSize: '0.75rem' }} onClick={() => applyPreset('focus')}>
+                  👁 Focus
+                </button>
+              </div>
+            </div>
+
             {/* Theme Selector */}
             <div className="control-group">
               <span className="control-label">Theme</span>
-              <div className="theme-selector">
-                {['light', 'dark', 'sepia', 'slate'].map(t => (
-                  <button
-                    key={t}
-                    className={`theme-btn theme-btn-${t} ${theme === t ? 'active' : ''}`}
-                    onClick={() => updateTheme(t)}
-                    title={`${t.charAt(0).toUpperCase() + t.slice(1)} Theme`}
-                  />
-                ))}
+              <div className="theme-selector" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {['light', 'dark', 'sepia', 'slate'].map(t => (
+                    <button
+                      key={t}
+                      className={`theme-btn theme-btn-${t} ${theme === t ? 'active' : ''}`}
+                      onClick={() => updateTheme(t)}
+                      title={`${t.charAt(0).toUpperCase() + t.slice(1)} Theme`}
+                    />
+                  ))}
+                </div>
+                <button
+                  className={`control-btn ${theme === 'auto' ? 'active' : ''}`}
+                  onClick={() => updateTheme('auto')}
+                  style={{ padding: '0.375rem 0.5rem', fontSize: '0.75rem', flex: 1 }}
+                >
+                  🌓 Auto
+                </button>
               </div>
             </div>
 
             {/* Font Family Selector */}
             <div className="control-group">
               <span className="control-label">Font Style</span>
-              <div className="control-buttons">
+              <div className="control-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', background: 'transparent', border: 'none', padding: 0 }}>
                 <button
-                  className={`control-btn ${fontFamily === 'serif-lora' ? 'active' : ''}`}
+                  className={`control-btn btn ${fontFamily === 'serif-lora' ? 'active' : ''}`}
                   onClick={() => updatePreference('fontFamily', 'serif-lora', setFontFamily)}
+                  style={{ flex: '1 0 45%', padding: '0.375rem 0' }}
                 >
                   Lora
                 </button>
                 <button
-                  className={`control-btn ${fontFamily === 'serif-merriweather' ? 'active' : ''}`}
-                  onClick={() => updatePreference('fontFamily', 'serif-merriweather', setFontFamily)}
+                  className={`control-btn btn ${fontFamily === 'font-literata' ? 'active' : ''}`}
+                  onClick={() => updatePreference('fontFamily', 'font-literata', setFontFamily)}
+                  style={{ flex: '1 0 45%', padding: '0.375rem 0' }}
                 >
-                  Merri
+                  Literata
                 </button>
                 <button
-                  className={`control-btn ${fontFamily === 'sans' ? 'active' : ''}`}
+                  className={`control-btn btn ${fontFamily === 'font-be-vietnam' ? 'active' : ''}`}
+                  onClick={() => updatePreference('fontFamily', 'font-be-vietnam', setFontFamily)}
+                  style={{ flex: '1 0 45%', padding: '0.375rem 0' }}
+                >
+                  Be VN
+                </button>
+                <button
+                  className={`control-btn btn ${fontFamily === 'sans' ? 'active' : ''}`}
                   onClick={() => updatePreference('fontFamily', 'sans', setFontFamily)}
+                  style={{ flex: '1 0 45%', padding: '0.375rem 0' }}
                 >
                   Inter
                 </button>
+                {data.originalFont && (
+                  <button
+                    className={`control-btn btn ${fontFamily === 'original' ? 'active' : ''}`}
+                    onClick={() => updatePreference('fontFamily', 'original', setFontFamily)}
+                    style={{ flex: '1 0 95%', padding: '0.375rem 0', fontSize: '0.75rem' }}
+                  >
+                    Copy Site Font ({data.originalFont})
+                  </button>
+                )}
               </div>
             </div>
 
             {/* Font Size Selector */}
             <div className="control-group">
-              <span className="control-label">Size</span>
-              <div className="control-buttons">
-                {['small', 'normal', 'large', 'extra-large'].map((size, idx) => (
-                  <button
-                    key={size}
-                    className={`control-btn ${fontSize === size ? 'active' : ''}`}
-                    onClick={() => updatePreference('fontSize', size, setFontSize)}
-                  >
-                    {idx === 0 ? 'A-' : idx === 3 ? 'A+' : size === 'normal' ? 'A' : 'A'}
-                  </button>
-                ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="control-label">Size</span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{fontSizePx}px</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button 
+                  className="btn" 
+                  style={{ padding: '0.25rem 0.5rem', minWidth: '28px' }}
+                  onClick={() => updatePreference('fontSizePx', String(Math.max(14, fontSizePx - 1)), (val) => setFontSizePx(parseInt(val)))}
+                >
+                  -
+                </button>
+                <input 
+                  type="range" 
+                  min="14" 
+                  max="36" 
+                  value={fontSizePx} 
+                  onChange={(e) => updatePreference('fontSizePx', e.target.value, (val) => setFontSizePx(parseInt(val)))}
+                  style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                />
+                <button 
+                  className="btn" 
+                  style={{ padding: '0.25rem 0.5rem', minWidth: '28px' }}
+                  onClick={() => updatePreference('fontSizePx', String(Math.min(36, fontSizePx + 1)), (val) => setFontSizePx(parseInt(val)))}
+                >
+                  +
+                </button>
               </div>
             </div>
 
@@ -414,10 +523,11 @@ function ReaderView() {
 
           {/* Extracted story content */}
           <div 
-            className={`reader-content ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'serif-merriweather' ? 'font-serif-merriweather' : 'font-serif-lora'}`}
+            className={`reader-content ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'font-be-vietnam' ? 'font-be-vietnam' : fontFamily === 'font-literata' ? 'font-literata' : fontFamily === 'serif-lora' ? 'font-serif-lora' : ''}`}
             style={{ 
-              fontSize: fontSizes[fontSize], 
-              lineHeight: lineHeights[lineHeight] 
+              fontSize: `${fontSizePx}px`, 
+              lineHeight: lineHeights[lineHeight],
+              fontFamily: fontFamily === 'original' && data.originalFont ? data.originalFont : undefined
             }}
             dangerouslySetInnerHTML={{ __html: data.content }}
           />

@@ -265,6 +265,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Detect original font-family
+    let originalFont: string | null = null;
+    try {
+      const wrappers = document.querySelectorAll(
+        '#chapter-c, .chapter-c, #chapter-content, .chapter-content, #js-chap-content, .content, #content, .post-content, #body_chapter, body'
+      );
+      for (const wrapper of Array.from(wrappers) as any[]) {
+        const style = wrapper.getAttribute('style') || '';
+        const match = style.match(/font-family:\s*([^;]+)/i);
+        if (match) {
+          originalFont = match[1].replace(/['"]/g, '').trim();
+          break;
+        }
+      }
+
+      if (!originalFont) {
+        const styles = document.querySelectorAll('style');
+        for (const styleEl of Array.from(styles) as any[]) {
+          const cssText = styleEl.textContent || '';
+          const match = cssText.match(
+            /(?:#chapter-c|\.chapter-c|\.chapter-content|#chapter-content|\.content|#content|body)\s*\{[^}]*font-family:\s*([^;}]+)/i
+          );
+          if (match) {
+            originalFont = match[1].replace(/['"]/g, '').trim();
+            break;
+          }
+        }
+      }
+    } catch (fontErr) {
+      console.error('Failed to parse original font family:', fontErr);
+    }
+
     // Run Readability to extract the main content
     const reader = new Readability(document as any);
     const article = reader.parse();
@@ -285,6 +317,7 @@ export async function GET(request: NextRequest) {
       prevUrl,
       originalUrl: targetUrl,
       chapters,
+      originalFont,
     });
   } catch (error: any) {
     return NextResponse.json(

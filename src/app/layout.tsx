@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
-import { Inter, Lora, Merriweather } from "next/font/google";
+import { Inter, Lora, Be_Vietnam_Pro, Literata } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({
   variable: "--font-inter",
-  subsets: ["latin"],
+  subsets: ["latin", "vietnamese"],
 });
 
 const lora = Lora({
   variable: "--font-lora",
-  subsets: ["latin"],
+  subsets: ["latin", "vietnamese"],
 });
 
-const merriweather = Merriweather({
-  variable: "--font-merriweather",
-  weight: ["300", "400", "700"],
-  subsets: ["latin"],
+const beVietnamPro = Be_Vietnam_Pro({
+  variable: "--font-be-vietnam",
+  weight: ["300", "400", "500", "700"],
+  subsets: ["latin", "vietnamese"],
+});
+
+const literata = Literata({
+  variable: "--font-literata",
+  weight: ["300", "400", "500", "700"],
+  subsets: ["latin", "vietnamese"],
 });
 
 export const metadata: Metadata = {
@@ -29,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${lora.variable} ${merriweather.variable}`}>
+    <html lang="en" className={`${inter.variable} ${lora.variable} ${beVietnamPro.variable} ${literata.variable}`}>
       <body>{children}</body>
     </html>
   );
