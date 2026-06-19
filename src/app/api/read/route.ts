@@ -65,14 +65,22 @@ export async function GET(request: NextRequest) {
     const links = Array.from(document.querySelectorAll('a'));
     for (const link of links) {
       const text = link.textContent?.trim().toLowerCase() || '';
+      const id = link.getAttribute('id')?.toLowerCase() || '';
       const href = link.getAttribute('href');
+      const title = link.getAttribute('title')?.toLowerCase() || '';
       if (!href) continue;
 
       const absoluteUrl = getAbsoluteUrl(href);
       if (!absoluteUrl) continue;
 
-      // Match common prev/next link texts
-      if (!prevUrl && (
+      // Match common prev link patterns (IDs, text, titles, multilingual)
+      const isPrev = 
+        id === 'prev_chap' || 
+        id === 'prev-chap' || 
+        id === 'prevchap' ||
+        id === 'prev' ||
+        title.includes('previous') ||
+        title.includes('chương trước') ||
         text === 'prev' ||
         text === 'previous' ||
         text === 'previous chapter' ||
@@ -81,12 +89,22 @@ export async function GET(request: NextRequest) {
         text === '« prev' ||
         text.includes('prev chapter') ||
         text === 'back' ||
-        link.title.toLowerCase().includes('previous')
-      )) {
-        prevUrl = absoluteUrl;
-      }
+        text.includes('chương trước') ||
+        text.includes('chap trước') ||
+        text === 'trước' ||
+        text === '‹ trước' ||
+        text === '« trước' ||
+        text === '< trước';
 
-      if (!nextUrl && (
+      // Match common next link patterns (IDs, text, titles, multilingual)
+      const isNext = 
+        id === 'next_chap' || 
+        id === 'next-chap' || 
+        id === 'nextchap' ||
+        id === 'next' ||
+        title.includes('next') ||
+        title.includes('chương sau') ||
+        title.includes('chương tiếp') ||
         text === 'next' ||
         text === 'next chapter' ||
         text === 'next >' ||
@@ -94,8 +112,19 @@ export async function GET(request: NextRequest) {
         text === '» next' ||
         text.includes('next chapter') ||
         text === 'forward' ||
-        link.title.toLowerCase().includes('next')
-      )) {
+        text.includes('chương sau') ||
+        text.includes('chương tiếp') ||
+        text.includes('chap sau') ||
+        text.includes('chap tiếp') ||
+        text === 'tiếp' ||
+        text === 'tiếp ›' ||
+        text === 'tiếp »' ||
+        text === 'tiếp >';
+
+      if (isPrev && !prevUrl) {
+        prevUrl = absoluteUrl;
+      }
+      if (isNext && !nextUrl) {
         nextUrl = absoluteUrl;
       }
     }
