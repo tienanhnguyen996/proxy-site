@@ -11,6 +11,7 @@ interface ArticleData {
   nextUrl: string | null;
   prevUrl: string | null;
   originalUrl: string;
+  chapters?: { title: string; url: string }[];
 }
 
 function ReaderView() {
@@ -31,6 +32,34 @@ function ReaderView() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ArticleData | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
+
+  const handleChapterChange = (url: string) => {
+    if (url) {
+      router.push(`/read?url=${encodeURIComponent(url)}`);
+    }
+  };
+
+  const getCurrentChapterSelectValue = () => {
+    if (!data?.chapters || data.chapters.length === 0) return data?.originalUrl || '';
+    const exactMatch = data.chapters.find(c => c.url === data.originalUrl);
+    if (exactMatch) return exactMatch.url;
+
+    const normalizePath = (u: string) => {
+      try {
+        let p = new URL(u).pathname;
+        if (p.endsWith('/')) p = p.slice(0, -1);
+        return p;
+      } catch {
+        return u;
+      }
+    };
+    
+    const currentPath = normalizePath(data.originalUrl);
+    const pathMatch = data.chapters.find(c => normalizePath(c.url) === currentPath);
+    if (pathMatch) return pathMatch.url;
+
+    return data.chapters[0].url;
+  };
 
   // Initialize preferences from LocalStorage
   useEffect(() => {
@@ -221,9 +250,34 @@ function ReaderView() {
       <header className="header">
         <div className="container header-inner">
           <button className="btn" onClick={() => router.push('/')}>← Home</button>
-          <div className="logo" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--meta-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
-            {data.siteName}
-          </div>
+          {data.chapters && data.chapters.length > 0 ? (
+            <select
+              value={getCurrentChapterSelectValue()}
+              onChange={(e) => handleChapterChange(e.target.value)}
+              style={{
+                maxWidth: '200px',
+                padding: '0.4rem 0.6rem',
+                borderRadius: '6px',
+                border: '1px solid var(--border)',
+                background: 'var(--card-bg)',
+                color: 'var(--fg)',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                outline: 'none',
+                fontWeight: 500
+              }}
+            >
+              {data.chapters.map((chap, idx) => (
+                <option key={idx} value={chap.url}>
+                  {chap.title}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="logo" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--meta-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+              {data.siteName}
+            </div>
+          )}
           <button className="btn" onClick={() => setShowSettings(!showSettings)}>
             ⚙ Settings
           </button>
@@ -369,31 +423,59 @@ function ReaderView() {
           />
 
           {/* Bottom navigation */}
-          <div className="chapter-nav">
+          <div className="chapter-nav" style={{ alignItems: 'center' }}>
             {data.prevUrl ? (
               <button 
                 className="btn"
                 onClick={() => router.push(`/read?url=${encodeURIComponent(data.prevUrl!)}`)}
+                style={{ minWidth: '90px' }}
               >
-                ◀ Previous Chapter
+                ◀ Prev
               </button>
             ) : (
-              <div style={{ flex: 1 }}></div>
+              <div style={{ flex: 1, minWidth: '90px' }}></div>
             )}
             
-            <button className="btn" onClick={() => router.push('/')}>
-              Index
-            </button>
+            {data.chapters && data.chapters.length > 0 ? (
+              <select
+                value={getCurrentChapterSelectValue()}
+                onChange={(e) => handleChapterChange(e.target.value)}
+                style={{
+                  padding: '0.625rem 1rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--card-bg)',
+                  color: 'var(--fg)',
+                  fontSize: '0.875rem',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  maxWidth: '180px',
+                  textAlign: 'center',
+                  fontWeight: 500
+                }}
+              >
+                {data.chapters.map((chap, idx) => (
+                  <option key={idx} value={chap.url}>
+                    {chap.title}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <button className="btn" onClick={() => router.push('/')}>
+                Index
+              </button>
+            )}
 
             {data.nextUrl ? (
               <button 
                 className="btn btn-primary"
                 onClick={() => router.push(`/read?url=${encodeURIComponent(data.nextUrl!)}`)}
+                style={{ minWidth: '90px' }}
               >
-                Next Chapter ▶
+                Next ▶
               </button>
             ) : (
-              <div style={{ flex: 1 }}></div>
+              <div style={{ flex: 1, minWidth: '90px' }}></div>
             )}
           </div>
         </article>

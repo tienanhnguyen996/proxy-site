@@ -62,6 +62,33 @@ export async function GET(request: NextRequest) {
       }
     };
 
+    const getAbsoluteChapterUrl = (value: string | null) => {
+      if (!value) return null;
+      if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value;
+      }
+      if (value.startsWith('/')) {
+        try {
+          return new URL(value, targetUrl).toString();
+        } catch {
+          return null;
+        }
+      }
+      
+      try {
+        const urlObj = new URL(targetUrl);
+        const pathSegments = urlObj.pathname.split('/').filter(Boolean);
+        if (pathSegments.length >= 2) {
+          const basePath = '/' + pathSegments.slice(0, pathSegments.length - 1).join('/') + '/';
+          return new URL(value, new URL(basePath, targetUrl)).toString();
+        } else {
+          return new URL(value, targetUrl).toString();
+        }
+      } catch {
+        return null;
+      }
+    };
+
     const links = Array.from(document.querySelectorAll('a'));
     for (const link of links) {
       const text = link.textContent?.trim().toLowerCase() || '';
@@ -129,6 +156,116 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Detect Chapter List
+    const chapters: { title: string; url: string }[] = [];
+
+    // 1. Try AJAX chapter option retrieval (e.g. truyenfull.today)
+    const truyenIdInput = document.getElementById('truyen-id');
+    const truyenId = truyenIdInput ? truyenIdInput.getAttribute('value') : null;
+
+    if (truyenId) {
+      try {
+        const urlObj = new URL(targetUrl);
+        const ajaxUrl = `${urlObj.origin}/ajax.php?type=chapter_option&data=${truyenId}`;
+        const ajaxRes = await fetch(ajaxUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            Referer: targetUrl,
+          },
+          next: { revalidate: 3600 }
+        });
+
+        if (ajaxRes.ok) {
+          const ajaxHtml = await ajaxRes.text();
+          const ajaxDom = new JSDOM(ajaxHtml, { url: targetUrl });
+          const options = Array.from(ajaxDom.window.document.querySelectorAll('option'));
+
+          for (const option of options) {
+            const title = option.textContent?.trim() || '';
+            const value = option.getAttribute('value') || '';
+            if (value && title) {
+              const absoluteUrl = getAbsoluteChapterUrl(value);
+              if (absoluteUrl) {
+                chapters.push({ title, url: absoluteUrl });
+              }
+            }
+          }
+        }
+      } catch (ajaxErr) {
+        console.error('Failed to load AJAX chapters:', ajaxErr);
+      }
+    }
+
+    // 2. Fallback: Parse select elements with scoring to avoid choosing configuration dropdowns (like backgrounds/fonts)
+    if (chapters.length === 0) {
+      const selectElements = Array.from(document.querySelectorAll('select'));
+      let bestSelectElement = null;
+      let maxChapterScore = 0;
+
+      for (const select of selectElements) {
+        const options = Array.from(select.querySelectorAll('option'));
+        if (options.length < 2) continue;
+
+        let score = 0;
+        const className = (select.className || '').toLowerCase();
+        const id = (select.id || '').toLowerCase();
+        const name = (select.getAttribute('name') || '').toLowerCase();
+
+        if (className.includes('chapter') || className.includes('chap') || className.includes('jump')) score += 10;
+        if (id.includes('chapter') || id.includes('chap') || id.includes('jump')) score += 10;
+        if (name.includes('chapter') || name.includes('chap')) score += 10;
+
+        let chapterTextCount = 0;
+        for (const option of options) {
+          const text = (option.textContent || '').toLowerCase();
+          if (
+            text.includes('chương') || 
+            text.includes('chapter') || 
+            text.includes('chap') || 
+            text.includes('tập') || 
+            text.includes('chuong') || 
+            /^\d+$/.test(text.trim()) ||
+            /^\d+/.test(text.trim())
+          ) {
+            chapterTextCount++;
+          }
+        }
+
+        const chapterRatio = chapterTextCount / options.length;
+        score += chapterRatio * 50;
+        score += Math.min(options.length, 100) * 0.5;
+
+        // Apply penalty for setting/theme dropdowns
+        if (
+          className.includes('theme') || className.includes('color') || className.includes('background') ||
+          id.includes('theme') || id.includes('color') || id.includes('background') ||
+          name.includes('theme') || name.includes('color') || name.includes('background')
+        ) {
+          score -= 80;
+        }
+
+        if (score > maxChapterScore && score > 20) {
+          maxChapterScore = score;
+          bestSelectElement = select;
+        }
+      }
+
+      if (bestSelectElement) {
+        const options = Array.from(bestSelectElement.querySelectorAll('option'));
+        for (const option of options) {
+          const title = option.textContent?.trim() || '';
+          const value = option.getAttribute('value') || '';
+          if (value && title) {
+            const absoluteUrl = getAbsoluteChapterUrl(value);
+            if (absoluteUrl) {
+              chapters.push({ title, url: absoluteUrl });
+            }
+          }
+        }
+      }
+    }
+
     // Run Readability to extract the main content
     const reader = new Readability(document);
     const article = reader.parse();
@@ -148,6 +285,7 @@ export async function GET(request: NextRequest) {
       nextUrl,
       prevUrl,
       originalUrl: targetUrl,
+      chapters,
     });
   } catch (error: any) {
     return NextResponse.json(
