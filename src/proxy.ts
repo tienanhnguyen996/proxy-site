@@ -9,7 +9,9 @@ export async function proxy(request: NextRequest) {
   const isProtectedRoute = 
     pathname === '/' || 
     pathname.startsWith('/read') || 
-    pathname.startsWith('/api/read');
+    pathname.startsWith('/library') ||
+    pathname.startsWith('/api/read') ||
+    pathname.startsWith('/api/library');
 
   if (isProtectedRoute) {
     const sessionCookie = request.cookies.get('aetherread_session')?.value || '';
@@ -19,7 +21,7 @@ export async function proxy(request: NextRequest) {
 
     if (!isValid) {
       // If it is an API route, return 401 JSON
-      if (pathname.startsWith('/api/read')) {
+      if (pathname.startsWith('/api/')) {
         return NextResponse.json(
           { error: 'Unauthorized. Please login.' },
           { status: 401 }

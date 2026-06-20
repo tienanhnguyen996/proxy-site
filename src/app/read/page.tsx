@@ -15,10 +15,36 @@ interface ArticleData {
   originalFont?: string | null;
 }
 
+function getNovelBaseUrl(chapterUrl: string): string {
+  try {
+    const url = new URL(chapterUrl);
+    if (url.hostname.includes('royalroad.com')) {
+      const match = url.pathname.match(/^\/fiction\/(\d+)\/([^/]+)/);
+      if (match) {
+        return `${url.origin}/fiction/${match[1]}/${match[2]}`;
+      }
+    }
+    const paths = url.pathname.split('/').filter(Boolean);
+    if (paths.length > 1) {
+      const last = paths[paths.length - 1];
+      if (last.includes('chuong') || last.includes('chapter') || last.includes('chap') || !isNaN(Number(last))) {
+        return `${url.origin}/${paths.slice(0, -1).join('/')}/`;
+      }
+    }
+    return `${url.origin}/${paths.join('/')}/`;
+  } catch {
+    return chapterUrl;
+  }
+}
+
 function ReaderView() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const targetUrl = searchParams.get('url');
+
+  // Library & Sync States
+  const [isSaved, setIsSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Reader Preferences State
   const [theme, setTheme] = useState('light');
@@ -130,19 +156,162 @@ function ReaderView() {
     fetchArticle();
   }, [targetUrl]);
 
-  // Track scroll progress
+  // Check library status and restore scroll position if match is found
   useEffect(() => {
+    if (!data) return;
+    const checkLibrary = async () => {
+      try {
+        const res = await fetch('/api/library');
+        if (res.ok) {
+          const library = await res.json();
+          const novelUrl = getNovelBaseUrl(data.originalUrl);
+          const matched = library.find((b: any) => b.novel_url === novelUrl);
+          if (matched) {
+            setIsSaved(true);
+            
+            // Restore scroll position only if it corresponds to current page
+            if (matched.last_read_url === data.originalUrl && matched.scroll_position > 0) {
+              setTimeout(() => {
+                const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+                if (totalHeight > 0) {
+                  window.scrollTo(0, (matched.scroll_position / 100) * totalHeight);
+                }
+              }, 250);
+            }
+          } else {
+            setIsSaved(false);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to verify library status:', err);
+      }
+    };
+
+    checkLibrary();
+  }, [data]);
+
+  // Lazy pre-fetch next 5 chapters in background to Neon DB
+  useEffect(() => {
+    if (!data || !data.chapters || data.chapters.length === 0) return;
+
+    const currentIndex = data.chapters.findIndex(c => c.url === data.originalUrl);
+    if (currentIndex === -1) return;
+
+    const nextChapters = data.chapters.slice(currentIndex + 1, currentIndex + 6);
+
+    const prefetch = async () => {
+      for (const chap of nextChapters) {
+        try {
+          await fetch(`/api/read?url=${encodeURIComponent(chap.url)}`);
+          console.log(`Pre-fetched and cached chapter: ${chap.title}`);
+        } catch (e) {
+          console.error('Pre-fetch failed for:', chap.url, e);
+        }
+      }
+    };
+
+    const timer = setTimeout(() => {
+      prefetch();
+    }, 2500); // Delay slightly to avoid parsing conflicts on mount
+
+    return () => clearTimeout(timer);
+  }, [data]);
+
+  const saveProgress = async (scrollPos: number) => {
+    if (!data || !isSaved) return;
+    const novelUrl = getNovelBaseUrl(data.originalUrl);
+    try {
+      await fetch('/api/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'progress',
+          novel_url: novelUrl,
+          last_read_url: data.originalUrl,
+          last_read_title: data.title,
+          scroll_position: scrollPos
+        })
+      });
+    } catch (err) {
+      console.error('Failed to sync progress to database:', err);
+    }
+  };
+
+  const handleSaveToLibrary = async () => {
+    if (!data) return;
+    setSaving(true);
+    try {
+      const novelUrl = getNovelBaseUrl(data.originalUrl);
+      let novelTitle = data.siteName || 'New Novel';
+      if (data.title) {
+        novelTitle = data.title.split('-')[0].trim().split('Chương')[0].trim().split('Chapter')[0].trim();
+        if (!novelTitle) novelTitle = data.title;
+      }
+
+      const res = await fetch('/api/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          novel_url: novelUrl,
+          title: novelTitle,
+          site_name: data.siteName,
+          chapters_list: JSON.stringify(data.chapters || [])
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to save to library');
+      }
+
+      setIsSaved(true);
+
+      // Save initial reading progress
+      await fetch('/api/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'progress',
+          novel_url: novelUrl,
+          last_read_url: data.originalUrl,
+          last_read_title: data.title,
+          scroll_position: 0
+        })
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save novel to library.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Track scroll progress and save progress (throttled)
+  useEffect(() => {
+    if (!data) return;
+
+    let timer: NodeJS.Timeout;
     const handleScroll = () => {
       const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
       if (totalHeight > 0) {
         const progress = (window.scrollY / totalHeight) * 100;
         setScrollProgress(progress);
+
+        if (isSaved) {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            saveProgress(progress);
+          }, 3000);
+        }
       }
     };
 
     window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      clearTimeout(timer);
+    };
+  }, [data, isSaved]);
 
   const saveToHistory = (url: string, title: string, siteName: string) => {
     const historyJSON = localStorage.getItem('aetherread_history');
@@ -324,9 +493,20 @@ function ReaderView() {
               {data.siteName}
             </div>
           )}
-          <button className="btn" onClick={() => setShowSettings(!showSettings)}>
-            ⚙ Settings
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {!isSaved ? (
+              <button className="btn btn-primary" onClick={handleSaveToLibrary} disabled={saving} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}>
+                {saving ? 'Saving...' : '❤ Save'}
+              </button>
+            ) : (
+              <button className="btn" disabled style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', opacity: 0.7, borderColor: 'var(--accent)', color: 'var(--accent)', background: 'var(--accent-soft)', cursor: 'default' }}>
+                ✔ Saved
+              </button>
+            )}
+            <button className="btn" onClick={() => setShowSettings(!showSettings)}>
+              ⚙ Settings
+            </button>
+          </div>
         </div>
       </header>
 

@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { DOMParser } from 'linkedom';
 import { Readability } from '@mozilla/readability';
+import { sql } from '@/lib/db';
+
+function getNovelBaseUrl(chapterUrl: string): string {
+  try {
+    const url = new URL(chapterUrl);
+    if (url.hostname.includes('royalroad.com')) {
+      const match = url.pathname.match(/^\/fiction\/(\d+)\/([^/]+)/);
+      if (match) {
+        return `${url.origin}/fiction/${match[1]}/${match[2]}`;
+      }
+    }
+    const paths = url.pathname.split('/').filter(Boolean);
+    if (paths.length > 1) {
+      const last = paths[paths.length - 1];
+      if (last.includes('chuong') || last.includes('chapter') || last.includes('chap') || !isNaN(Number(last))) {
+        return `${url.origin}/${paths.slice(0, -1).join('/')}/`;
+      }
+    }
+    return `${url.origin}/${paths.join('/')}/`;
+  } catch {
+    return chapterUrl;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -21,6 +44,39 @@ export async function GET(request: NextRequest) {
       { error: 'Invalid target URL format' },
       { status: 400 }
     );
+  }
+
+  // Check database cache first
+  try {
+    const cachedRows = await sql`SELECT * FROM chapters WHERE url = ${targetUrl} LIMIT 1`;
+    if (cachedRows.length > 0) {
+      const cached = cachedRows[0];
+      
+      // Fetch table of contents from library if it exists
+      let chaptersList = [];
+      try {
+        const libRows = await sql`SELECT chapters_list FROM library WHERE novel_url = ${cached.novel_url} LIMIT 1`;
+        if (libRows.length > 0 && libRows[0].chapters_list) {
+          chaptersList = JSON.parse(libRows[0].chapters_list);
+        }
+      } catch (libErr) {
+        console.error('Failed to fetch library chapter list:', libErr);
+      }
+
+      return NextResponse.json({
+        title: cached.title,
+        content: cached.content,
+        excerpt: '',
+        siteName: new URL(cached.url).hostname,
+        nextUrl: cached.next_url,
+        prevUrl: cached.prev_url,
+        originalUrl: cached.url,
+        chapters: chaptersList,
+        originalFont: cached.original_font,
+      });
+    }
+  } catch (dbErr) {
+    console.error('Database read error:', dbErr);
   }
 
   try {
@@ -306,6 +362,23 @@ export async function GET(request: NextRequest) {
         { error: 'Could not extract clean text from this page. Try reading another chapter.' },
         { status: 422 }
       );
+    }
+
+    // Save to cache database
+    try {
+      const novelUrl = getNovelBaseUrl(targetUrl);
+      await sql`
+        INSERT INTO chapters (id, novel_url, url, title, content, next_url, prev_url, original_font)
+        VALUES (${targetUrl}, ${novelUrl}, ${targetUrl}, ${article.title || 'Untitled'}, ${article.content}, ${nextUrl || null}, ${prevUrl || null}, ${originalFont || null})
+        ON CONFLICT (url) DO UPDATE SET
+          title = EXCLUDED.title,
+          content = EXCLUDED.content,
+          next_url = EXCLUDED.next_url,
+          prev_url = EXCLUDED.prev_url,
+          original_font = EXCLUDED.original_font
+      `;
+    } catch (dbInsertErr) {
+      console.error('Database write error:', dbInsertErr);
     }
 
     return NextResponse.json({

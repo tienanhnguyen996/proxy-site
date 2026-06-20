@@ -1,0 +1,148 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { sql } from '@/lib/db';
+
+// GET: Fetch all books in the library
+export async function GET() {
+  try {
+    const books = await sql`
+      SELECT * FROM library 
+      ORDER BY updated_at DESC
+    `;
+    return NextResponse.json(books);
+  } catch (error: any) {
+    console.error('Error fetching library:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to fetch library' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST: Add a book to library or update progress
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { 
+      action, // 'add' or 'progress'
+      novel_url, 
+      title, 
+      author, 
+      cover_url, 
+      site_name, 
+      chapters_list,
+      last_read_url,
+      last_read_title,
+      scroll_position
+    } = body;
+
+    if (!novel_url) {
+      return NextResponse.json(
+        { error: 'Missing novel_url' },
+        { status: 400 }
+      );
+    }
+
+    if (action === 'add') {
+      if (!title) {
+        return NextResponse.json(
+          { error: 'Missing title for adding novel' },
+          { status: 400 }
+        );
+      }
+      
+      const id = novel_url; // Use URL as primary key ID
+      const chaptersCount = chapters_list ? JSON.parse(chapters_list).length : 0;
+
+      await sql`
+        INSERT INTO library (id, novel_url, title, author, cover_url, site_name, total_chapters, chapters_list, updated_at)
+        VALUES (
+          ${id}, 
+          ${novel_url}, 
+          ${title}, 
+          ${author || null}, 
+          ${cover_url || null}, 
+          ${site_name || null}, 
+          ${chaptersCount}, 
+          ${chapters_list || '[]'},
+          CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (novel_url) DO UPDATE SET
+          title = EXCLUDED.title,
+          author = COALESCE(EXCLUDED.author, library.author),
+          cover_url = COALESCE(EXCLUDED.cover_url, library.cover_url),
+          total_chapters = EXCLUDED.total_chapters,
+          chapters_list = EXCLUDED.chapters_list,
+          updated_at = CURRENT_TIMESTAMP
+      `;
+
+      return NextResponse.json({ success: true, message: 'Novel added/updated in library' });
+    } 
+    
+    if (action === 'progress') {
+      await sql`
+        UPDATE library
+        SET 
+          last_read_url = ${last_read_url || null},
+          last_read_title = ${last_read_title || null},
+          scroll_position = ${scroll_position !== undefined ? Number(scroll_position) : 0},
+          updated_at = CURRENT_TIMESTAMP
+        WHERE novel_url = ${novel_url}
+      `;
+
+      return NextResponse.json({ success: true, message: 'Reading progress updated' });
+    }
+
+    return NextResponse.json(
+      { error: 'Invalid action. Must be "add" or "progress"' },
+      { status: 400 }
+    );
+  } catch (error: any) {
+    console.error('Error modifying library:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to update library' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE: Delete a book and its cached chapters
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const novel_url = searchParams.get('novel_url');
+
+    if (!novel_url) {
+      return NextResponse.json(
+        { error: 'Missing novel_url parameter' },
+        { status: 400 }
+      );
+    }
+
+    // 1. Delete all cached chapters belonging to this novel
+    try {
+      await sql`
+        DELETE FROM chapters 
+        WHERE novel_url = ${novel_url}
+      `;
+    } catch (chDelErr) {
+      console.error('Error deleting chapters from DB cache:', chDelErr);
+    }
+
+    // 2. Delete the library record
+    const result = await sql`
+      DELETE FROM library 
+      WHERE novel_url = ${novel_url}
+    `;
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Novel and cached chapters deleted successfully' 
+    });
+  } catch (error: any) {
+    console.error('Error deleting library entry:', error);
+    return NextResponse.json(
+      { error: error.message || 'Failed to delete from library' },
+      { status: 500 }
+    );
+  }
+}
