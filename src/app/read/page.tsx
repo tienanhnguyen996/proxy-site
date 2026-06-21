@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 interface ArticleData {
@@ -61,8 +61,15 @@ function ReaderView() {
   const [chapters, setChapters] = useState<{ title: string; url: string }[]>([]);
   const [scrollProgress, setScrollProgress] = useState(0);
 
+  // Refs to track progress and prevent redundant saves
+  const lastSavedUrlRef = useRef<string>('');
+  const lastSavedProgressRef = useRef<number>(0);
+
   const handleChapterChange = (url: string) => {
     if (url) {
+      if (isSaved && data) {
+        saveProgress(scrollProgress);
+      }
       router.push(`/read?url=${encodeURIComponent(url)}`);
     }
   };
@@ -160,6 +167,18 @@ function ReaderView() {
     fetchArticle();
   }, [targetUrl]);
 
+  // Save initial progress (scroll = 0) when a new chapter is loaded
+  useEffect(() => {
+    if (!data || !isSaved) return;
+    
+    // Only save if we haven't saved this chapter yet
+    if (lastSavedUrlRef.current !== data.originalUrl) {
+      lastSavedUrlRef.current = data.originalUrl;
+      lastSavedProgressRef.current = 0;
+      saveProgress(0);
+    }
+  }, [data, isSaved]);
+
   // Check library status and restore scroll position if match is found
   useEffect(() => {
     if (!data) return;
@@ -188,6 +207,9 @@ function ReaderView() {
                 const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
                 if (totalHeight > 0) {
                   window.scrollTo(0, (matched.scroll_position / 100) * totalHeight);
+                  // Update refs to match restored position
+                  lastSavedProgressRef.current = matched.scroll_position;
+                  lastSavedUrlRef.current = data.originalUrl;
                 }
               }, 250);
             }
@@ -230,19 +252,18 @@ function ReaderView() {
     return () => clearTimeout(timer);
   }, [data]);
 
-  const saveProgress = async (scrollPos: number) => {
-    if (!data || !isSaved) return;
-    const novelUrl = getNovelBaseUrl(data.originalUrl);
+  const saveProgress = async (scrollPos: number, url: string = data?.originalUrl || '', title: string = data?.title || '') => {
+    if (!data || !isSaved || !url) return;
+    const novelUrl = getNovelBaseUrl(url);
     try {
-      await fetch('/api/library', {
+      await fetch('/api/library/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'progress',
-          novel_url: novelUrl,
-          last_read_url: data.originalUrl,
-          last_read_title: data.title,
-          scroll_position: scrollPos
+          novelUrl,
+          lastReadUrl: url,
+          lastReadTitle: title,
+          scrollPosition: scrollPos
         })
       });
     } catch (err) {
@@ -299,32 +320,40 @@ function ReaderView() {
     }
   };
 
-  // Track scroll progress and save progress (throttled)
+  // Track scroll progress and update local state
   useEffect(() => {
     if (!data) return;
 
-    let timer: NodeJS.Timeout;
     const handleScroll = () => {
       const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
       if (totalHeight > 0) {
         const progress = (window.scrollY / totalHeight) * 100;
         setScrollProgress(progress);
-
-        if (isSaved) {
-          clearTimeout(timer);
-          timer = setTimeout(() => {
-            saveProgress(progress);
-          }, 3000);
-        }
       }
     };
 
     window.addEventListener('scroll', handleScroll);
     return () => {
       window.removeEventListener('scroll', handleScroll);
-      clearTimeout(timer);
     };
-  }, [data, isSaved]);
+  }, [data]);
+
+  // Periodically save progress to the DB (every 10 seconds of active reading/scrolling)
+  useEffect(() => {
+    if (!data || !isSaved) return;
+
+    const interval = setInterval(() => {
+      const diff = Math.abs(scrollProgress - lastSavedProgressRef.current);
+      // Only sync if the scroll position changed by more than 1.5% or the URL changed
+      if (diff > 1.5 || lastSavedUrlRef.current !== data.originalUrl) {
+        lastSavedProgressRef.current = scrollProgress;
+        lastSavedUrlRef.current = data.originalUrl;
+        saveProgress(scrollProgress);
+      }
+    }, 10000); // Check and save every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [data, isSaved, scrollProgress]);
 
   const saveToHistory = (url: string, title: string, siteName: string) => {
     const historyJSON = localStorage.getItem('aetherread_history');
@@ -719,7 +748,7 @@ function ReaderView() {
             {data.prevUrl ? (
               <button 
                 className="btn"
-                onClick={() => router.push(`/read?url=${encodeURIComponent(data.prevUrl!)}`)}
+                onClick={() => handleChapterChange(data.prevUrl!)}
                 style={{ minWidth: '90px' }}
               >
                 ◀ Prev
@@ -761,7 +790,7 @@ function ReaderView() {
             {data.nextUrl ? (
               <button 
                 className="btn btn-primary"
-                onClick={() => router.push(`/read?url=${encodeURIComponent(data.nextUrl!)}`)}
+                onClick={() => handleChapterChange(data.nextUrl!)}
                 style={{ minWidth: '90px' }}
               >
                 Next ▶
