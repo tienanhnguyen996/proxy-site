@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
+import { getUrlId } from '@/lib/utils';
 
 // GET: Fetch all books in the library
 export async function GET() {
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      const id = novel_url; // Use URL as primary key ID
+      const id = getUrlId(novel_url);
       const chaptersCount = chapters_list ? JSON.parse(chapters_list).length : 0;
 
       await sql`

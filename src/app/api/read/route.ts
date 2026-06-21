@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DOMParser } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import { sql } from '@/lib/db';
+import { getUrlId } from '@/lib/utils';
 
 function getNovelBaseUrl(chapterUrl: string): string {
   try {
@@ -367,9 +368,10 @@ export async function GET(request: NextRequest) {
     // Save to cache database
     try {
       const novelUrl = getNovelBaseUrl(targetUrl);
+      const chapterId = getUrlId(targetUrl);
       await sql`
         INSERT INTO chapters (id, novel_url, url, title, content, next_url, prev_url, original_font)
-        VALUES (${targetUrl}, ${novelUrl}, ${targetUrl}, ${article.title || 'Untitled'}, ${article.content}, ${nextUrl || null}, ${prevUrl || null}, ${originalFont || null})
+        VALUES (${chapterId}, ${novelUrl}, ${targetUrl}, ${article.title || 'Untitled'}, ${article.content}, ${nextUrl || null}, ${prevUrl || null}, ${originalFont || null})
         ON CONFLICT (url) DO UPDATE SET
           title = EXCLUDED.title,
           content = EXCLUDED.content,
