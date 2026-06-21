@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { getUrlId } from '@/lib/utils';
+import { getUrlId, normalizeUrl } from '@/lib/utils';
 
 // GET: Fetch all books in the library
 export async function GET() {
@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const normalizedNovelUrl = normalizeUrl(novel_url);
+
     if (action === 'add') {
       if (!title) {
         return NextResponse.json(
@@ -51,20 +53,37 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      const id = getUrlId(novel_url);
-      const chaptersCount = chapters_list ? JSON.parse(chapters_list).length : 0;
+      const id = getUrlId(normalizedNovelUrl);
+      
+      let normalizedChaptersList = '[]';
+      let chaptersCount = 0;
+      if (chapters_list) {
+        try {
+          const list = JSON.parse(chapters_list);
+          if (Array.isArray(list)) {
+            const normalizedList = list.map((ch: any) => ({
+              ...ch,
+              url: normalizeUrl(ch.url)
+            }));
+            normalizedChaptersList = JSON.stringify(normalizedList);
+            chaptersCount = normalizedList.length;
+          }
+        } catch (e) {
+          console.error('Failed to parse chapters_list', e);
+        }
+      }
 
       await sql`
         INSERT INTO library (id, novel_url, title, author, cover_url, site_name, total_chapters, chapters_list, updated_at)
         VALUES (
           ${id}, 
-          ${novel_url}, 
+          ${normalizedNovelUrl}, 
           ${title}, 
           ${author || null}, 
           ${cover_url || null}, 
           ${site_name || null}, 
           ${chaptersCount}, 
-          ${chapters_list || '[]'},
+          ${normalizedChaptersList},
           CURRENT_TIMESTAMP
         )
         ON CONFLICT (novel_url) DO UPDATE SET
@@ -80,14 +99,15 @@ export async function POST(request: NextRequest) {
     } 
     
     if (action === 'progress') {
+      const normalizedLastReadUrl = last_read_url ? normalizeUrl(last_read_url) : null;
       await sql`
         UPDATE library
         SET 
-          last_read_url = ${last_read_url || null},
+          last_read_url = ${normalizedLastReadUrl},
           last_read_title = ${last_read_title || null},
           scroll_position = ${scroll_position !== undefined ? Number(scroll_position) : 0},
           updated_at = CURRENT_TIMESTAMP
-        WHERE novel_url = ${novel_url}
+        WHERE novel_url = ${normalizedNovelUrl}
       `;
 
       return NextResponse.json({ success: true, message: 'Reading progress updated' });
@@ -119,11 +139,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const normalizedNovelUrl = normalizeUrl(novel_url);
+
     // 1. Delete all cached chapters belonging to this novel
     try {
       await sql`
         DELETE FROM chapters 
-        WHERE novel_url = ${novel_url}
+        WHERE novel_url = ${normalizedNovelUrl}
       `;
     } catch (chDelErr) {
       console.error('Error deleting chapters from DB cache:', chDelErr);
@@ -132,7 +154,7 @@ export async function DELETE(request: NextRequest) {
     // 2. Delete the library record
     const result = await sql`
       DELETE FROM library 
-      WHERE novel_url = ${novel_url}
+      WHERE novel_url = ${normalizedNovelUrl}
     `;
 
     return NextResponse.json({ 

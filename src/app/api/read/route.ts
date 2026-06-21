@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { DOMParser } from 'linkedom';
 import { Readability } from '@mozilla/readability';
 import { sql } from '@/lib/db';
-import { getUrlId } from '@/lib/utils';
+import { getUrlId, normalizeUrl } from '@/lib/utils';
 
 function getNovelBaseUrl(chapterUrl: string): string {
   try {
@@ -37,9 +37,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  let normalizedUrl: string;
   try {
     // Basic validation of URL
     new URL(targetUrl);
+    normalizedUrl = normalizeUrl(targetUrl);
   } catch {
     return NextResponse.json(
       { error: 'Invalid target URL format' },
@@ -49,9 +51,9 @@ export async function GET(request: NextRequest) {
 
   // Check database cache first
   try {
-    const cachedRows = await sql`SELECT * FROM chapters WHERE url = ${targetUrl} LIMIT 1`;
+    const cachedRows = await sql`SELECT * FROM chapters WHERE url = ${normalizedUrl} LIMIT 1`;
     if (cachedRows.length > 0) {
-      console.log(`[CACHE HIT] Chapter read: ${targetUrl}`);
+      console.log(`[CACHE HIT] Chapter read: ${normalizedUrl}`);
       const cached = cachedRows[0];
       
       // Fetch table of contents from library if it exists
@@ -81,9 +83,9 @@ export async function GET(request: NextRequest) {
     console.error('Database read error:', dbErr);
   }
 
-  console.log(`[CACHE MISS] Chapter read: ${targetUrl}`);
+  console.log(`[CACHE MISS] Chapter read: ${normalizedUrl}`);
   try {
-    const response = await fetch(targetUrl, {
+    const response = await fetch(normalizedUrl, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -245,7 +247,7 @@ export async function GET(request: NextRequest) {
             if (value && title) {
               const absoluteUrl = getAbsoluteChapterUrl(value);
               if (absoluteUrl) {
-                chapters.push({ title, url: absoluteUrl });
+                chapters.push({ title, url: normalizeUrl(absoluteUrl) });
               }
             }
           }
@@ -317,7 +319,7 @@ export async function GET(request: NextRequest) {
           if (value && title) {
             const absoluteUrl = getAbsoluteChapterUrl(value);
             if (absoluteUrl) {
-              chapters.push({ title, url: absoluteUrl });
+              chapters.push({ title, url: normalizeUrl(absoluteUrl) });
             }
           }
         }
@@ -367,13 +369,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const normalizedNextUrl = nextUrl ? normalizeUrl(nextUrl) : null;
+    const normalizedPrevUrl = prevUrl ? normalizeUrl(prevUrl) : null;
+
     // Save to cache database
     try {
-      const novelUrl = getNovelBaseUrl(targetUrl);
-      const chapterId = getUrlId(targetUrl);
+      const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+      const chapterId = getUrlId(normalizedUrl);
       await sql`
         INSERT INTO chapters (id, novel_url, url, title, content, next_url, prev_url, original_font)
-        VALUES (${chapterId}, ${novelUrl}, ${targetUrl}, ${article.title || 'Untitled'}, ${article.content}, ${nextUrl || null}, ${prevUrl || null}, ${originalFont || null})
+        VALUES (${chapterId}, ${novelUrl}, ${normalizedUrl}, ${article.title || 'Untitled'}, ${article.content}, ${normalizedNextUrl}, ${normalizedPrevUrl}, ${originalFont || null})
         ON CONFLICT (url) DO UPDATE SET
           title = EXCLUDED.title,
           content = EXCLUDED.content,
@@ -389,10 +394,10 @@ export async function GET(request: NextRequest) {
       title: article.title || 'Untitled',
       content: article.content,
       excerpt: article.excerpt || '',
-      siteName: article.siteName || new URL(targetUrl).hostname,
-      nextUrl,
-      prevUrl,
-      originalUrl: targetUrl,
+      siteName: article.siteName || new URL(normalizedUrl).hostname,
+      nextUrl: normalizedNextUrl,
+      prevUrl: normalizedPrevUrl,
+      originalUrl: normalizedUrl,
       chapters,
       originalFont,
     });
