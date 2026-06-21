@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getUrlId, normalizeUrl } from '@/lib/utils';
 
+export const preferredRegion = 'sin1';
+
+
 // GET: Fetch all books in the library
 export async function GET() {
   try {

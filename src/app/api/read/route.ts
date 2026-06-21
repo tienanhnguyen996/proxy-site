@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getUrlId, normalizeUrl } from '@/lib/utils';
 
+export const preferredRegion = 'sin1';
+
+
 function getNovelBaseUrl(chapterUrl: string): string {
   try {
     const url = new URL(chapterUrl);
