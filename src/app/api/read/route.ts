@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
   try {
     const cachedRows = await sql`SELECT * FROM chapters WHERE url = ${targetUrl} LIMIT 1`;
     if (cachedRows.length > 0) {
+      console.log(`[CACHE HIT] Chapter read: ${targetUrl}`);
       const cached = cachedRows[0];
       
       // Fetch table of contents from library if it exists
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
     console.error('Database read error:', dbErr);
   }
 
+  console.log(`[CACHE MISS] Chapter read: ${targetUrl}`);
   try {
     const response = await fetch(targetUrl, {
       headers: {
