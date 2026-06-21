@@ -161,11 +161,10 @@ function ReaderView() {
     if (!data) return;
     const checkLibrary = async () => {
       try {
-        const res = await fetch('/api/library');
+        const novelUrl = getNovelBaseUrl(data.originalUrl);
+        const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}`);
         if (res.ok) {
-          const library = await res.json();
-          const novelUrl = getNovelBaseUrl(data.originalUrl);
-          const matched = library.find((b: any) => b.novel_url === novelUrl);
+          const matched = await res.json();
           if (matched) {
             setIsSaved(true);
             

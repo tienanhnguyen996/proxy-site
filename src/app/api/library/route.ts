@@ -5,14 +5,38 @@ import { getUrlId, normalizeUrl } from '@/lib/utils';
 export const preferredRegion = 'sin1';
 
 
-// GET: Fetch all books in the library
-export async function GET() {
+// GET: Fetch all books in the library or check a specific book
+export async function GET(request: NextRequest) {
   try {
-    const books = await sql`
-      SELECT * FROM library 
-      ORDER BY updated_at DESC
-    `;
-    return NextResponse.json(books);
+    const { searchParams } = new URL(request.url);
+    const novelUrl = searchParams.get('novel_url');
+
+    if (novelUrl) {
+      const normalizedNovelUrl = normalizeUrl(novelUrl);
+      const books = await sql`
+        SELECT id, novel_url, title, author, cover_url, site_name, total_chapters, last_read_url, last_read_title, scroll_position, updated_at
+        FROM library 
+        WHERE novel_url = ${normalizedNovelUrl}
+        LIMIT 1
+      `;
+      return NextResponse.json(books.length > 0 ? books[0] : null);
+    }
+
+    const includeChapters = searchParams.get('include_chapters') === 'true';
+    if (includeChapters) {
+      const books = await sql`
+        SELECT * FROM library 
+        ORDER BY updated_at DESC
+      `;
+      return NextResponse.json(books);
+    } else {
+      const books = await sql`
+        SELECT id, novel_url, title, author, cover_url, site_name, total_chapters, last_read_url, last_read_title, scroll_position, updated_at
+        FROM library 
+        ORDER BY updated_at DESC
+      `;
+      return NextResponse.json(books);
+    }
   } catch (error: any) {
     console.error('Error fetching library:', error);
     return NextResponse.json(

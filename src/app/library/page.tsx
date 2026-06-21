@@ -39,7 +39,7 @@ export default function LibraryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/library');
+      const res = await fetch('/api/library?include_chapters=true');
       if (!res.ok) {
         throw new Error('Failed to fetch library list');
       }
