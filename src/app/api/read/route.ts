@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DOMParser } from 'linkedom';
-import { Readability } from '@mozilla/readability';
 import { sql } from '@/lib/db';
 import { getUrlId, normalizeUrl } from '@/lib/utils';
 
@@ -49,22 +47,26 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Check database cache first
+  // Check database cache first with a JOIN to fetch library chapters in one query
   try {
-    const cachedRows = await sql`SELECT * FROM chapters WHERE url = ${normalizedUrl} LIMIT 1`;
+    const cachedRows = await sql`
+      SELECT c.*, l.chapters_list 
+      FROM chapters c
+      LEFT JOIN library l ON l.novel_url = c.novel_url
+      WHERE c.url = ${normalizedUrl} 
+      LIMIT 1
+    `;
     if (cachedRows.length > 0) {
       console.log(`[CACHE HIT] Chapter read: ${normalizedUrl}`);
       const cached = cachedRows[0];
       
-      // Fetch table of contents from library if it exists
       let chaptersList = [];
-      try {
-        const libRows = await sql`SELECT chapters_list FROM library WHERE novel_url = ${cached.novel_url} LIMIT 1`;
-        if (libRows.length > 0 && libRows[0].chapters_list) {
-          chaptersList = JSON.parse(libRows[0].chapters_list);
+      if (cached.chapters_list) {
+        try {
+          chaptersList = JSON.parse(cached.chapters_list);
+        } catch (parseErr) {
+          console.error('Failed to parse cached chapters_list:', parseErr);
         }
-      } catch (libErr) {
-        console.error('Failed to fetch library chapter list:', libErr);
       }
 
       return NextResponse.json({
@@ -105,6 +107,10 @@ export async function GET(request: NextRequest) {
     }
 
     const htmlText = await response.text();
+
+    // Dynamically import Linkedom and Readability only on cache miss
+    const { DOMParser } = await import('linkedom');
+    const { Readability } = await import('@mozilla/readability');
 
     // Parse HTML using Linkedom
     const document = new DOMParser().parseFromString(htmlText, 'text/html');
