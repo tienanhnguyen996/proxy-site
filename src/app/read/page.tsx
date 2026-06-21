@@ -58,6 +58,7 @@ function ReaderView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ArticleData | null>(null);
+  const [chapters, setChapters] = useState<{ title: string; url: string }[]>([]);
   const [scrollProgress, setScrollProgress] = useState(0);
 
   const handleChapterChange = (url: string) => {
@@ -142,6 +143,9 @@ function ReaderView() {
         }
 
         setData(result);
+        if (result.chapters && result.chapters.length > 0) {
+          setChapters(result.chapters);
+        }
         
         // Save to History in LocalStorage
         saveToHistory(targetUrl, result.title || 'Untitled Chapter', result.siteName || new URL(targetUrl).hostname);
@@ -162,11 +166,21 @@ function ReaderView() {
     const checkLibrary = async () => {
       try {
         const novelUrl = getNovelBaseUrl(data.originalUrl);
-        const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}`);
+        const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}&include_chapters=true`);
         if (res.ok) {
           const matched = await res.json();
           if (matched) {
             setIsSaved(true);
+            if (matched.chapters_list) {
+              try {
+                const parsedList = JSON.parse(matched.chapters_list);
+                if (parsedList && parsedList.length > 0) {
+                  setChapters(parsedList);
+                }
+              } catch (parseErr) {
+                console.error('Failed to parse library chapters_list:', parseErr);
+              }
+            }
             
             // Restore scroll position only if it corresponds to current page
             if (matched.last_read_url === data.originalUrl && matched.scroll_position > 0) {
@@ -191,12 +205,12 @@ function ReaderView() {
 
   // Lazy pre-fetch next 5 chapters in background to Neon DB
   useEffect(() => {
-    if (!data || !data.chapters || data.chapters.length === 0) return;
+    if (!data || !chapters || chapters.length === 0) return;
 
-    const currentIndex = data.chapters.findIndex(c => c.url === data.originalUrl);
+    const currentIndex = chapters.findIndex(c => c.url === data.originalUrl);
     if (currentIndex === -1) return;
 
-    const nextChapters = data.chapters.slice(currentIndex + 1, currentIndex + 6);
+    const nextChapters = chapters.slice(currentIndex + 1, currentIndex + 6);
 
     const prefetch = async () => {
       for (const chap of nextChapters) {
@@ -255,7 +269,7 @@ function ReaderView() {
           novel_url: novelUrl,
           title: novelTitle,
           site_name: data.siteName,
-          chapters_list: JSON.stringify(data.chapters || [])
+          chapters_list: JSON.stringify(chapters || [])
         })
       });
 
@@ -464,13 +478,13 @@ function ReaderView() {
       <header className="header">
         <div className="container header-inner">
           <button className="btn" onClick={() => router.push('/')}>← <span className="btn-text-hide-mobile">Home</span></button>
-          {data.chapters && data.chapters.length > 0 ? (
+          {chapters && chapters.length > 0 ? (
             <select
               value={getCurrentChapterSelectValue()}
               onChange={(e) => handleChapterChange(e.target.value)}
               className="chapter-select"
             >
-              {data.chapters.map((chap, idx) => (
+              {chapters.map((chap, idx) => (
                 <option key={idx} value={chap.url}>
                   {chap.title}
                 </option>
@@ -714,7 +728,7 @@ function ReaderView() {
               <div style={{ flex: 1, minWidth: '90px' }}></div>
             )}
             
-            {data.chapters && data.chapters.length > 0 ? (
+            {chapters && chapters.length > 0 ? (
               <select
                 value={getCurrentChapterSelectValue()}
                 onChange={(e) => handleChapterChange(e.target.value)}
@@ -732,7 +746,7 @@ function ReaderView() {
                   fontWeight: 500
                 }}
               >
-                {data.chapters.map((chap, idx) => (
+                {chapters.map((chap, idx) => (
                   <option key={idx} value={chap.url}>
                     {chap.title}
                   </option>

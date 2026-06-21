@@ -50,14 +50,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Check database cache first with a JOIN to fetch library chapters in one query
+  // Check database cache first (query chapters table only to avoid heavy JOIN and minimize payload size)
   try {
     const startTime = Date.now();
     const cachedRows = await sql`
-      SELECT c.*, l.chapters_list 
-      FROM chapters c
-      LEFT JOIN library l ON l.novel_url = c.novel_url
-      WHERE c.url = ${normalizedUrl} 
+      SELECT id, novel_url, url, title, content, next_url, prev_url, original_font
+      FROM chapters 
+      WHERE url = ${normalizedUrl} 
       LIMIT 1
     `;
     const dbDuration = Date.now() - startTime;
@@ -66,15 +65,6 @@ export async function GET(request: NextRequest) {
     if (cachedRows.length > 0) {
       console.log(`[CACHE HIT] Chapter read: ${normalizedUrl}`);
       const cached = cachedRows[0];
-      
-      let chaptersList = [];
-      if (cached.chapters_list) {
-        try {
-          chaptersList = JSON.parse(cached.chapters_list);
-        } catch (parseErr) {
-          console.error('Failed to parse cached chapters_list:', parseErr);
-        }
-      }
 
       return NextResponse.json({
         title: cached.title,
@@ -84,7 +74,7 @@ export async function GET(request: NextRequest) {
         nextUrl: cached.next_url,
         prevUrl: cached.prev_url,
         originalUrl: cached.url,
-        chapters: chaptersList,
+        chapters: [], // Chapters list is fetched separately from library check to optimize load performance
         originalFont: cached.original_font,
       });
     }
