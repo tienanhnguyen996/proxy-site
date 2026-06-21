@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
 
   // Check database cache first with a JOIN to fetch library chapters in one query
   try {
+    const startTime = Date.now();
     const cachedRows = await sql`
       SELECT c.*, l.chapters_list 
       FROM chapters c
@@ -56,6 +57,9 @@ export async function GET(request: NextRequest) {
       WHERE c.url = ${normalizedUrl} 
       LIMIT 1
     `;
+    const dbDuration = Date.now() - startTime;
+    console.log(`[DB Query Time] ${dbDuration}ms`);
+    
     if (cachedRows.length > 0) {
       console.log(`[CACHE HIT] Chapter read: ${normalizedUrl}`);
       const cached = cachedRows[0];
