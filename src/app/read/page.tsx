@@ -405,9 +405,9 @@ function ReaderView() {
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <header className="header">
           <div className="container header-inner">
-            <button className="btn" onClick={() => router.push('/')}>← Back</button>
+            <button className="btn" onClick={() => router.push('/')}>← <span className="btn-text-hide-mobile">Back</span></button>
             <div className="logo">✦ Reading...</div>
-            <div style={{ width: '60px' }}></div>
+            <div className="header-spacer"></div>
           </div>
         </header>
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem 0' }}>
@@ -430,9 +430,9 @@ function ReaderView() {
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         <header className="header">
           <div className="container header-inner">
-            <button className="btn" onClick={() => router.push('/')}>← Home</button>
+            <button className="btn" onClick={() => router.push('/')}>← <span className="btn-text-hide-mobile">Home</span></button>
             <div className="logo">✦ Error</div>
-            <div style={{ width: '60px' }}></div>
+            <div className="header-spacer"></div>
           </div>
         </header>
         <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
@@ -464,23 +464,12 @@ function ReaderView() {
       {/* Header */}
       <header className="header">
         <div className="container header-inner">
-          <button className="btn" onClick={() => router.push('/')}>← Home</button>
+          <button className="btn" onClick={() => router.push('/')}>← <span className="btn-text-hide-mobile">Home</span></button>
           {data.chapters && data.chapters.length > 0 ? (
             <select
               value={getCurrentChapterSelectValue()}
               onChange={(e) => handleChapterChange(e.target.value)}
-              style={{
-                maxWidth: '200px',
-                padding: '0.4rem 0.6rem',
-                borderRadius: '6px',
-                border: '1px solid var(--border)',
-                background: 'var(--card-bg)',
-                color: 'var(--fg)',
-                fontSize: '0.85rem',
-                cursor: 'pointer',
-                outline: 'none',
-                fontWeight: 500
-              }}
+              className="chapter-select"
             >
               {data.chapters.map((chap, idx) => (
                 <option key={idx} value={chap.url}>
@@ -489,22 +478,22 @@ function ReaderView() {
               ))}
             </select>
           ) : (
-            <div className="logo" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--meta-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>
+            <div className="logo site-title-header">
               {data.siteName}
             </div>
           )}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="header-actions">
             {!isSaved ? (
-              <button className="btn btn-primary" onClick={handleSaveToLibrary} disabled={saving} style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem' }}>
-                {saving ? 'Saving...' : '❤ Save'}
+              <button className="btn btn-primary btn-save" onClick={handleSaveToLibrary} disabled={saving}>
+                {saving ? 'Saving...' : <>❤ <span className="btn-text-hide-mobile">Save</span></>}
               </button>
             ) : (
-              <button className="btn" disabled style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', opacity: 0.7, borderColor: 'var(--accent)', color: 'var(--accent)', background: 'var(--accent-soft)', cursor: 'default' }}>
-                ✔ Saved
+              <button className="btn btn-saved" disabled>
+                ✔ <span className="btn-text-hide-mobile">Saved</span>
               </button>
             )}
-            <button className="btn" onClick={() => setShowSettings(!showSettings)}>
-              ⚙ Settings
+            <button className="btn btn-settings" onClick={() => setShowSettings(!showSettings)}>
+              ⚙ <span className="btn-text-hide-mobile">Settings</span>
             </button>
           </div>
         </div>

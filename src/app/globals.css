@@ -452,3 +452,98 @@ a:hover {
   height: 18px;
   margin-bottom: 1rem;
 }
+
+/* Header Responsiveness and Layout Classes */
+.chapter-select {
+  max-width: 200px;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--fg);
+  font-size: 0.85rem;
+  cursor: pointer;
+  outline: none;
+  font-weight: 500;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.chapter-select:hover {
+  border-color: var(--accent);
+}
+
+.site-title-header {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--meta-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.header-spacer {
+  width: 60px;
+}
+
+@media (max-width: 600px) {
+  /* Reduce container padding on mobile to maximize content width */
+  .container {
+    padding: 0 0.75rem;
+  }
+
+  /* Shorter header height and tighter gap on mobile */
+  .header-inner {
+    height: 56px;
+    gap: 0.35rem;
+  }
+
+  /* Make all buttons inside header smaller */
+  .header-inner .btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+    border-radius: 6px;
+    gap: 0.2rem;
+  }
+
+  /* Adjust chapter dropdown to take less space on mobile */
+  .chapter-select {
+    max-width: 120px;
+    font-size: 0.75rem;
+    padding: 0.4rem 0.3rem;
+  }
+
+  /* Shrink site title logo in header if displayed */
+  .site-title-header {
+    max-width: 100px;
+    font-size: 0.85rem;
+  }
+
+  /* Make spacer smaller on loading/error headers */
+  .header-spacer {
+    width: 30px;
+  }
+
+  /* Tighter gap for header buttons */
+  .header-actions {
+    gap: 0.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Hide text labels inside header buttons, showing only emojis/icons */
+  .btn-text-hide-mobile {
+    display: none;
+  }
+  
+  /* Even smaller dropdown for very narrow devices */
+  .chapter-select {
+    max-width: 90px;
+  }
+}
+
