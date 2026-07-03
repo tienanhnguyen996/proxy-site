@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { sql, pruneReadChapters } from '@/lib/db';
 import { normalizeUrl } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
@@ -29,6 +29,9 @@ export async function POST(request: NextRequest) {
       WHERE novel_url = ${normalizedNovelUrl}
     `;
 
+    // Prune already-read chapters from the cache
+    await pruneReadChapters(novelUrl, lastReadUrl);
+
     return NextResponse.json({ success: true, message: 'Reading progress updated' });
   } catch (error: any) {
     console.error('Error updating progress:', error);
@@ -38,3 +41,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

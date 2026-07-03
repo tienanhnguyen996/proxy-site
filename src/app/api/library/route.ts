@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { sql, pruneReadChapters } from '@/lib/db';
 import { getUrlId, normalizeUrl } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
@@ -136,6 +136,10 @@ export async function POST(request: NextRequest) {
           updated_at = CURRENT_TIMESTAMP
         WHERE novel_url = ${normalizedNovelUrl}
       `;
+
+      if (last_read_url) {
+        await pruneReadChapters(novel_url, last_read_url);
+      }
 
       return NextResponse.json({ success: true, message: 'Reading progress updated' });
     }
