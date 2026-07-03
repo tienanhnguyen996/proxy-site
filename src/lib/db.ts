@@ -26,10 +26,11 @@ export async function pruneReadChapters(novelUrl: string, lastReadUrl: string) {
 
     // 2. Find index of current chapter
     const currentIndex = chaptersList.findIndex((ch: any) => normalizeUrl(ch.url) === normalizedLastReadUrl);
-    if (currentIndex <= 0) return; // If not found, or it's the first chapter, nothing to prune
+    if (currentIndex <= 5) return; // If not found, or it's within the first 5 chapters, keep all
 
-    // 3. Get all read chapter URLs (everything before the current index)
-    const readUrls = chaptersList.slice(0, currentIndex).map((ch: any) => normalizeUrl(ch.url));
+    // 3. Get read chapter URLs to prune (everything before the last 5 read chapters)
+    const pruneEndIndex = Math.max(0, currentIndex - 5);
+    const readUrls = chaptersList.slice(0, pruneEndIndex).map((ch: any) => normalizeUrl(ch.url));
     if (readUrls.length === 0) return;
 
     // 4. Delete read chapters from DB cache
