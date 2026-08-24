@@ -1,11 +1,16 @@
 import { neon } from '@neondatabase/serverless';
 import { normalizeUrl } from './utils';
 
-if (!process.env.DATABASE_URL) {
+const connectionString =
+  process.env.DATABASE_URL ||
+  process.env.NEON_DATABASE_URL ||
+  process.env.NEON_POSTGRES_URL;
+
+if (!connectionString) {
   throw new Error('DATABASE_URL environment variable is not defined');
 }
 
-export const sql = neon(process.env.DATABASE_URL);
+export const sql = neon(connectionString);
 
 export async function pruneReadChapters(novelUrl: string, lastReadUrl: string) {
   try {
