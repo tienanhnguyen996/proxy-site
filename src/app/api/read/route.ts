@@ -30,6 +30,7 @@ function getNovelBaseUrl(chapterUrl: string): string {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
+  const mode = searchParams.get('mode') === 'translated' ? 'translated' : 'raw';
 
   if (!targetUrl) {
     return NextResponse.json(
@@ -50,11 +51,51 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Translated mode: serve pre-generated AI translation if it exists (never scrapes)
+  if (mode === 'translated') {
+    try {
+      const translatedRows = await sql`
+        SELECT t.content, t.title, c.next_url, c.prev_url, c.original_font, c.url
+        FROM translations t
+        LEFT JOIN chapters c ON c.url = t.url
+        WHERE t.url = ${normalizedUrl} 
+        LIMIT 1
+      `;
+      if (translatedRows.length > 0) {
+        console.log(`[TRANSLATION HIT] Chapter read: ${normalizedUrl}`);
+        const row = translatedRows[0];
+        return NextResponse.json({
+          title: row.title || 'Untitled',
+          content: row.content,
+          excerpt: '',
+          siteName: new URL(row.url).hostname,
+          nextUrl: row.next_url,
+          prevUrl: row.prev_url,
+          originalUrl: row.url,
+          chapters: [],
+          originalFont: row.original_font,
+          isTranslated: true,
+        });
+      }
+      return NextResponse.json(
+        { error: 'No AI translation available for this chapter yet.' },
+        { status: 404 }
+      );
+    } catch (dbErr) {
+      console.error('Database translation read error:', dbErr);
+      return NextResponse.json(
+        { error: 'Failed to look up translation.' },
+        { status: 500 }
+      );
+    }
+  }
+
   // Check database cache first (query chapters table only to avoid heavy JOIN and minimize payload size)
   try {
     const startTime = Date.now();
     const cachedRows = await sql`
-      SELECT id, novel_url, url, title, content, next_url, prev_url, original_font
+      SELECT id, novel_url, url, title, content, next_url, prev_url, original_font,
+             EXISTS(SELECT 1 FROM translations t WHERE t.url = chapters.url) AS has_translation
       FROM chapters 
       WHERE url = ${normalizedUrl} 
       LIMIT 1
@@ -76,6 +117,7 @@ export async function GET(request: NextRequest) {
         originalUrl: cached.url,
         chapters: [], // Chapters list is fetched separately from library check to optimize load performance
         originalFont: cached.original_font,
+        hasTranslation: !!cached.has_translation,
       });
     }
   } catch (dbErr) {
@@ -152,7 +194,7 @@ export async function GET(request: NextRequest) {
       }
     };
 
-    const links = Array.from(document.querySelectorAll('a')) as any[];
+    const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
     for (const link of links) {
       const text = link.textContent?.trim().toLowerCase() || '';
       const id = link.getAttribute('id')?.toLowerCase() || '';
@@ -242,7 +284,7 @@ export async function GET(request: NextRequest) {
         if (ajaxRes.ok) {
           const ajaxHtml = await ajaxRes.text();
           const ajaxDoc = new DOMParser().parseFromString(ajaxHtml, 'text/html');
-          const options = Array.from(ajaxDoc.querySelectorAll('option')) as any[];
+          const options = Array.from(ajaxDoc.querySelectorAll('option')) as HTMLOptionElement[];
 
           for (const option of options) {
             const title = option.textContent?.trim() || '';
@@ -262,12 +304,12 @@ export async function GET(request: NextRequest) {
 
     // 2. Fallback: Parse select elements with scoring to avoid choosing configuration dropdowns (like backgrounds/fonts)
     if (chapters.length === 0) {
-      const selectElements = Array.from(document.querySelectorAll('select')) as any[];
+      const selectElements = Array.from(document.querySelectorAll('select')) as HTMLSelectElement[];
       let bestSelectElement = null;
       let maxChapterScore = 0;
 
       for (const select of selectElements) {
-        const options = Array.from(select.querySelectorAll('option')) as any[];
+        const options = Array.from(select.querySelectorAll('option')) as HTMLOptionElement[];
         if (options.length < 2) continue;
 
         let score = 0;
@@ -315,7 +357,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (bestSelectElement) {
-        const options = Array.from(bestSelectElement.querySelectorAll('option')) as any[];
+        const options = Array.from(bestSelectElement.querySelectorAll('option')) as HTMLOptionElement[];
         for (const option of options) {
           const title = option.textContent?.trim() || '';
           const value = option.getAttribute('value') || '';
@@ -335,7 +377,7 @@ export async function GET(request: NextRequest) {
       const wrappers = document.querySelectorAll(
         '#chapter-c, .chapter-c, #chapter-content, .chapter-content, #js-chap-content, .content, #content, .post-content, #body_chapter, body'
       );
-      for (const wrapper of Array.from(wrappers) as any[]) {
+      for (const wrapper of Array.from(wrappers) as HTMLElement[]) {
         const style = wrapper.getAttribute('style') || '';
         const match = style.match(/font-family:\s*([^;]+)/i);
         if (match) {
@@ -346,7 +388,7 @@ export async function GET(request: NextRequest) {
 
       if (!originalFont) {
         const styles = document.querySelectorAll('style');
-        for (const styleEl of Array.from(styles) as any[]) {
+        for (const styleEl of Array.from(styles) as HTMLStyleElement[]) {
           const cssText = styleEl.textContent || '';
           const match = cssText.match(
             /(?:#chapter-c|\.chapter-c|\.chapter-content|#chapter-content|\.content|#content|body)\s*\{[^}]*font-family:\s*([^;}]+)/i
@@ -362,7 +404,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Run Readability to extract the main content
-    const reader = new Readability(document as any);
+    const reader = new Readability(document as unknown as Document);
     const article = reader.parse();
 
     if (!article) {
@@ -387,7 +429,8 @@ export async function GET(request: NextRequest) {
           content = EXCLUDED.content,
           next_url = EXCLUDED.next_url,
           prev_url = EXCLUDED.prev_url,
-          original_font = EXCLUDED.original_font
+          original_font = EXCLUDED.original_font,
+          created_at = NOW()
       `;
     } catch (dbInsertErr) {
       console.error('Database write error:', dbInsertErr);
@@ -403,10 +446,13 @@ export async function GET(request: NextRequest) {
       originalUrl: normalizedUrl,
       chapters,
       originalFont,
+      hasTranslation: false,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    console.error('Error in proxy read API:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Failed to fetch and parse the content.';
     return NextResponse.json(
-      { error: error.message || 'An error occurred while fetching/parsing the novel.' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

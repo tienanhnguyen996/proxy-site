@@ -35,9 +35,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true, message: 'Logged in successfully' });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : 'Authentication failed';
     return NextResponse.json(
-      { error: error.message || 'Authentication failed' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

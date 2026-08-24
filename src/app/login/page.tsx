@@ -8,14 +8,10 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [theme, setTheme] = useState('light');
   const router = useRouter();
 
   useEffect(() => {
-    // Load theme from localStorage
     const savedTheme = localStorage.getItem('aetherread_theme') || 'light';
-    setTheme(savedTheme);
-    
     if (savedTheme === 'auto') {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -47,8 +43,9 @@ export default function LoginPage() {
       // Successful login, redirect to homepage
       router.push('/');
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || 'An error occurred during login.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'An error occurred during login.';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

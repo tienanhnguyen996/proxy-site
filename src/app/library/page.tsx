@@ -35,7 +35,7 @@ export default function LibraryPage() {
     fetchLibrary();
   }, []);
 
-  const fetchLibrary = async () => {
+  async function fetchLibrary() {
     setLoading(true);
     setError(null);
     try {
@@ -45,12 +45,13 @@ export default function LibraryPage() {
       }
       const data = await res.json();
       setBooks(data);
-    } catch (err: any) {
-      setError(err.message || 'An error occurred while loading your library.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'An error occurred while loading your library.';
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,8 +123,9 @@ export default function LibraryPage() {
       // Reset form and reload
       setInputUrl('');
       await fetchLibrary();
-    } catch (err: any) {
-      setImportError(err.message || 'An error occurred during import.');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'An error occurred during import.';
+      setImportError(errorMsg);
     } finally {
       setImporting(false);
     }
@@ -144,8 +146,9 @@ export default function LibraryPage() {
         throw new Error('Failed to delete book');
       }
       setBooks(prev => prev.filter(b => b.novel_url !== novelUrl));
-    } catch (err: any) {
-      alert(err.message || 'Error deleting book');
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'Error deleting book';
+      alert(errorMsg);
     }
   };
 

@@ -1,10 +1,5 @@
 const SECRET_KEY = process.env.AUTH_SECRET || 'aetherread-secret-32-chars-long-key-string';
 
-// Convert a string to an ArrayBuffer
-function stringToBuffer(str: string): Uint8Array {
-  return new TextEncoder().encode(str);
-}
-
 // Generate an HMAC SHA-256 signature
 async function sign(message: string, secret: string): Promise<string> {
   const encoder = new TextEncoder();

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, pruneReadChapters } from '@/lib/db';
+import { sql, pruneReadChapters, shouldUpdateProgress } from '@/lib/db';
 import { getUrlId, normalizeUrl } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
@@ -37,10 +37,11 @@ export async function GET(request: NextRequest) {
       `;
       return NextResponse.json(books);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error fetching library:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Failed to fetch library';
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch library' },
+      { error: errorMsg },
       { status: 500 }
     );
   }
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
         try {
           const list = JSON.parse(chapters_list);
           if (Array.isArray(list)) {
-            const normalizedList = list.map((ch: any) => ({
+            const normalizedList = list.map((ch: { url: string }) => ({
               ...ch,
               url: normalizeUrl(ch.url)
             }));
@@ -126,6 +127,13 @@ export async function POST(request: NextRequest) {
     } 
     
     if (action === 'progress') {
+      if (last_read_url) {
+        const shouldUpdate = await shouldUpdateProgress(novel_url, last_read_url);
+        if (!shouldUpdate) {
+          return NextResponse.json({ success: true, message: 'Ignored older progress update' });
+        }
+      }
+
       const normalizedLastReadUrl = last_read_url ? normalizeUrl(last_read_url) : null;
       await sql`
         UPDATE library
@@ -148,10 +156,11 @@ export async function POST(request: NextRequest) {
       { error: 'Invalid action. Must be "add" or "progress"' },
       { status: 400 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error modifying library:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Failed to update library';
     return NextResponse.json(
-      { error: error.message || 'Failed to update library' },
+      { error: errorMsg },
       { status: 500 }
     );
   }
@@ -183,7 +192,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 2. Delete the library record
-    const result = await sql`
+    await sql`
       DELETE FROM library 
       WHERE novel_url = ${normalizedNovelUrl}
     `;
@@ -192,10 +201,11 @@ export async function DELETE(request: NextRequest) {
       success: true, 
       message: 'Novel and cached chapters deleted successfully' 
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting library entry:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Failed to delete from library';
     return NextResponse.json(
-      { error: error.message || 'Failed to delete from library' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

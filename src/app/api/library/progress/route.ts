@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql, pruneReadChapters } from '@/lib/db';
+import { sql, pruneReadChapters, shouldUpdateProgress } from '@/lib/db';
 import { normalizeUrl } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
@@ -19,6 +19,12 @@ export async function POST(request: NextRequest) {
     const normalizedNovelUrl = normalizeUrl(novelUrl);
     const normalizedLastReadUrl = normalizeUrl(lastReadUrl);
 
+    // Guard against older progress overwriting newer progress
+    const shouldUpdate = await shouldUpdateProgress(novelUrl, lastReadUrl);
+    if (!shouldUpdate) {
+      return NextResponse.json({ success: true, message: 'Ignored older progress update' });
+    }
+
     await sql`
       UPDATE library
       SET 
@@ -33,10 +39,11 @@ export async function POST(request: NextRequest) {
     await pruneReadChapters(novelUrl, lastReadUrl);
 
     return NextResponse.json({ success: true, message: 'Reading progress updated' });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating progress:', error);
+    const errorMsg = error instanceof Error ? error.message : 'Failed to update progress';
     return NextResponse.json(
-      { error: error.message || 'Failed to update progress' },
+      { error: errorMsg },
       { status: 500 }
     );
   }

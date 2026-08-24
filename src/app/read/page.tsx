@@ -13,6 +13,7 @@ interface ArticleData {
   originalUrl: string;
   chapters?: { title: string; url: string }[];
   originalFont?: string | null;
+  hasTranslation?: boolean;
 }
 
 function getNovelBaseUrl(chapterUrl: string): string {
@@ -45,18 +46,55 @@ function ReaderView() {
   // Library & Sync States
   const [isSaved, setIsSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncBanner, setSyncBanner] = useState<{ url: string; title: string } | null>(null);
+
+  // Translation Source States (raw vs AI translated)
+  const [mode, setMode] = useState<'raw' | 'translated'>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aetherread_mode') === 'translated' ? 'translated' : 'raw';
+    }
+    return 'raw';
+  });
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [unavailableTranslations, setUnavailableTranslations] = useState<Record<string, boolean>>({});
+  const fetchingTranslationsRef = useRef<Set<string>>(new Set());
 
   // Reader Preferences State
-  const [theme, setTheme] = useState('light');
-  const [fontSizePx, setFontSizePx] = useState(20);
-  const [lineHeight, setLineHeight] = useState('relaxed');
-  const [fontFamily, setFontFamily] = useState('serif-lora');
-  const [readerWidth, setReaderWidth] = useState('normal');
+  const [theme, setTheme] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aetherread_theme') || 'light';
+    }
+    return 'light';
+  });
+  const [fontSizePx, setFontSizePx] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return parseInt(localStorage.getItem('aetherread_fontSizePx') || '20');
+    }
+    return 20;
+  });
+  const [lineHeight, setLineHeight] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aetherread_lineHeight') || 'relaxed';
+    }
+    return 'relaxed';
+  });
+  const [fontFamily, setFontFamily] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aetherread_fontFamily') || 'serif-lora';
+    }
+    return 'serif-lora';
+  });
+  const [readerWidth, setReaderWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('aetherread_readerWidth') || 'normal';
+    }
+    return 'normal';
+  });
   
   // UI State
   const [showSettings, setShowSettings] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(() => !targetUrl);
+  const [error, setError] = useState<string | null>(() => !targetUrl ? 'No URL provided to read.' : null);
   const [data, setData] = useState<ArticleData | null>(null);
   const [chapters, setChapters] = useState<{ title: string; url: string }[]>([]);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -96,20 +134,9 @@ function ReaderView() {
     return data.chapters[0].url;
   };
 
-  // Initialize preferences from LocalStorage
+  // Initialize document theme on mount
   useEffect(() => {
     const savedTheme = localStorage.getItem('aetherread_theme') || 'light';
-    const savedFontSize = localStorage.getItem('aetherread_fontSizePx') || '20';
-    const savedLineHeight = localStorage.getItem('aetherread_lineHeight') || 'relaxed';
-    const savedFontFamily = localStorage.getItem('aetherread_fontFamily') || 'serif-lora';
-    const savedReaderWidth = localStorage.getItem('aetherread_readerWidth') || 'normal';
-
-    setTheme(savedTheme);
-    setFontSizePx(parseInt(savedFontSize));
-    setLineHeight(savedLineHeight);
-    setFontFamily(savedFontFamily);
-    setReaderWidth(savedReaderWidth);
-
     if (savedTheme === 'auto') {
       const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
@@ -132,11 +159,7 @@ function ReaderView() {
 
   // Fetch article data when targetUrl changes
   useEffect(() => {
-    if (!targetUrl) {
-      setError('No URL provided to read.');
-      setLoading(false);
-      return;
-    }
+    if (!targetUrl) return;
 
     const fetchArticle = async () => {
       setLoading(true);
@@ -156,8 +179,9 @@ function ReaderView() {
         
         // Save to History in LocalStorage
         saveToHistory(targetUrl, result.title || 'Untitled Chapter', result.siteName || new URL(targetUrl).hostname);
-      } catch (err: any) {
-        setError(err.message || 'An error occurred while loading content.');
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'An error occurred while loading content.';
+        setError(errorMsg);
       } finally {
         setLoading(false);
         window.scrollTo(0, 0); // scroll to top on new chapter load
@@ -177,6 +201,7 @@ function ReaderView() {
       lastSavedProgressRef.current = 0;
       saveProgress(0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, isSaved]);
 
   // Check library status and restore scroll position if match is found
@@ -189,6 +214,12 @@ function ReaderView() {
         if (res.ok) {
           const matched = await res.json();
           if (matched) {
+            // Update refs first to prevent immediate saveProgress(0) overwrite
+            if (matched.last_read_url) {
+              lastSavedUrlRef.current = matched.last_read_url;
+              lastSavedProgressRef.current = matched.scroll_position || 0;
+            }
+
             setIsSaved(true);
             if (matched.chapters_list) {
               try {
@@ -225,6 +256,60 @@ function ReaderView() {
     checkLibrary();
   }, [data]);
 
+  // Listen to window focus/visibilitychange to check for remote progress updates
+  useEffect(() => {
+    if (!data || !isSaved || chapters.length === 0) return;
+
+    let active = true;
+
+    const checkRemoteProgress = async () => {
+      try {
+        const novelUrl = getNovelBaseUrl(data.originalUrl);
+        const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}&include_chapters=true`);
+        if (!res.ok || !active) return;
+        
+        const matched = await res.json();
+        if (matched && matched.last_read_url) {
+          const normalizedDbUrl = matched.last_read_url;
+          const normalizedCurrentUrl = data.originalUrl;
+          
+          if (normalizedDbUrl !== normalizedCurrentUrl) {
+            // Find indices in chapters to see if the DB has a newer chapter
+            const dbIndex = chapters.findIndex((c) => c.url === normalizedDbUrl);
+            const currentIndex = chapters.findIndex((c) => c.url === normalizedCurrentUrl);
+            
+            if (dbIndex !== -1 && currentIndex !== -1 && dbIndex > currentIndex) {
+              setSyncBanner({
+                url: matched.last_read_url,
+                title: matched.last_read_title || 'Newer Chapter'
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check remote progress:', err);
+      }
+    };
+
+    const handleActivity = () => {
+      if (document.visibilityState === 'visible') {
+        checkRemoteProgress();
+      }
+    };
+
+    window.addEventListener('focus', handleActivity);
+    document.addEventListener('visibilitychange', handleActivity);
+
+    // Initial check when isSaved/data/chapters changes
+    checkRemoteProgress();
+
+    return () => {
+      active = false;
+      window.removeEventListener('focus', handleActivity);
+      document.removeEventListener('visibilitychange', handleActivity);
+    };
+  }, [data, isSaved, chapters]);
+
   // Lazy pre-fetch next 5 chapters in background to Neon DB
   useEffect(() => {
     if (!data || !chapters || chapters.length === 0) return;
@@ -250,9 +335,9 @@ function ReaderView() {
     }, 2500); // Delay slightly to avoid parsing conflicts on mount
 
     return () => clearTimeout(timer);
-  }, [data]);
+  }, [data, chapters]);
 
-  const saveProgress = async (scrollPos: number, url: string = data?.originalUrl || '', title: string = data?.title || '') => {
+  async function saveProgress(scrollPos: number, url: string = data?.originalUrl || '', title: string = data?.title || '') {
     if (!data || !isSaved || !url) return;
     const novelUrl = getNovelBaseUrl(url);
     try {
@@ -269,7 +354,7 @@ function ReaderView() {
     } catch (err) {
       console.error('Failed to sync progress to database:', err);
     }
-  };
+  }
 
   const handleSaveToLibrary = async () => {
     if (!data) return;
@@ -297,6 +382,10 @@ function ReaderView() {
       if (!res.ok) {
         throw new Error('Failed to save to library');
       }
+
+      // Update refs to prevent duplicate save progress call
+      lastSavedUrlRef.current = data.originalUrl;
+      lastSavedProgressRef.current = 0;
 
       setIsSaved(true);
 
@@ -338,7 +427,7 @@ function ReaderView() {
     };
   }, [data]);
 
-  // Periodically save progress to the DB (every 10 seconds of active reading/scrolling)
+  // Periodically save progress to the DB (every 30 seconds of active reading/scrolling)
   useEffect(() => {
     if (!data || !isSaved) return;
 
@@ -350,14 +439,15 @@ function ReaderView() {
         lastSavedUrlRef.current = data.originalUrl;
         saveProgress(scrollProgress);
       }
-    }, 10000); // Check and save every 10 seconds
+    }, 30000); // Check and save every 30 seconds
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, isSaved, scrollProgress]);
 
-  const saveToHistory = (url: string, title: string, siteName: string) => {
+  function saveToHistory(url: string, title: string, siteName: string) {
     const historyJSON = localStorage.getItem('aetherread_history');
-    let historyList: any[] = [];
+    let historyList: { url: string; title: string; siteName: string; timestamp: number }[] = [];
     if (historyJSON) {
       try {
         historyList = JSON.parse(historyJSON);
@@ -381,7 +471,7 @@ function ReaderView() {
     }
 
     localStorage.setItem('aetherread_history', JSON.stringify(historyList));
-  };
+  }
 
   // Preference update handlers
   const updateTheme = (newTheme: string) => {
@@ -429,6 +519,44 @@ function ReaderView() {
         break;
     }
   };
+
+  // Translation mode helpers
+  const updateMode = (newMode: 'raw' | 'translated') => {
+    setMode(newMode);
+    localStorage.setItem('aetherread_mode', newMode);
+  };
+
+  // Lazily fetch AI translation for the current chapter when in translated mode
+  useEffect(() => {
+    if (!data || mode !== 'translated') return;
+    const url = data.originalUrl;
+
+    if (translations[url] || unavailableTranslations[url] || fetchingTranslationsRef.current.has(url)) return;
+
+    fetchingTranslationsRef.current.add(url);
+    fetch(`/api/read?url=${encodeURIComponent(url)}&mode=translated`)
+      .then(async (res) => {
+        if (!res.ok) {
+          setUnavailableTranslations(prev => ({ ...prev, [url]: true }));
+          return;
+        }
+        const result = await res.json();
+        if (result.content) {
+          setTranslations(prev => ({ ...prev, [url]: result.content }));
+          setUnavailableTranslations(prev => {
+            const next = { ...prev };
+            delete next[url];
+            return next;
+          });
+        } else {
+          setUnavailableTranslations(prev => ({ ...prev, [url]: true }));
+        }
+      })
+      .catch(() => setUnavailableTranslations(prev => ({ ...prev, [url]: true })))
+      .finally(() => {
+        fetchingTranslationsRef.current.delete(url);
+      });
+  }, [data, mode, translations, unavailableTranslations]);
 
   const lineHeights: Record<string, string> = {
     normal: '1.6',
@@ -496,6 +624,9 @@ function ReaderView() {
     );
   }
 
+  const translatedContent = mode === 'translated' ? translations[data.originalUrl] : undefined;
+  const isShowingTranslation = !!translatedContent;
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Scroll Progress Bar */}
@@ -540,6 +671,50 @@ function ReaderView() {
           </div>
         </div>
       </header>
+
+      {/* Sync Banner */}
+      {syncBanner && (
+        <div style={{
+          position: 'sticky',
+          top: '65px',
+          zIndex: 90,
+          background: 'var(--accent-soft)',
+          color: 'var(--accent)',
+          borderBottom: '1px solid var(--border)',
+          padding: '0.75rem 1rem',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: '1rem',
+          fontSize: '0.9rem',
+          fontWeight: 500,
+          backdropFilter: 'blur(10px)',
+        }}>
+          <span>
+            You were reading <strong>{syncBanner.title}</strong> on another device.
+          </span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button 
+              className="btn btn-primary" 
+              style={{ padding: '0.25rem 0.75rem', fontSize: '0.80rem' }}
+              onClick={() => {
+                const targetUrl = syncBanner.url;
+                setSyncBanner(null);
+                router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+              }}
+            >
+              Sync Progress
+            </button>
+            <button 
+              className="btn" 
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.80rem' }}
+              onClick={() => setSyncBanner(null)}
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Floating Preference Panel */}
       <div className="floating-settings">
@@ -713,6 +888,32 @@ function ReaderView() {
                 </button>
               </div>
             </div>
+
+            {/* Translation Source */}
+            <div className="control-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '12px' }}>
+              <span className="control-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>Translation</span>
+                {data && mode === 'translated' && (
+                  <span style={{ fontSize: '0.75rem', color: translations[data.originalUrl] ? 'var(--accent)' : 'var(--meta-fg)' }}>
+                    {translations[data.originalUrl] ? '✨ Translated' : data.hasTranslation ? 'Loading…' : 'Raw fallback'}
+                  </span>
+                )}
+              </span>
+              <div className="control-buttons">
+                <button
+                  className={`control-btn ${mode === 'raw' ? 'active' : ''}`}
+                  onClick={() => updateMode('raw')}
+                >
+                  Raw
+                </button>
+                <button
+                  className={`control-btn ${mode === 'translated' ? 'active' : ''}`}
+                  onClick={() => updateMode('translated')}
+                >
+                  ✨ AI Translated
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -725,7 +926,14 @@ function ReaderView() {
         >
           {/* Header metadata */}
           <div className="reader-header">
-            <div className="reader-meta">{data.siteName}</div>
+            <div className="reader-meta">
+              {data.siteName}{' '}
+              {isShowingTranslation ? (
+                <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>✨ AI Translated</span>
+              ) : mode === 'translated' ? (
+                <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--border)', color: 'var(--meta-fg)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>Raw · no translation yet</span>
+              ) : null}
+            </div>
             <h1 className="reader-title">{data.title}</h1>
             <a href={data.originalUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--meta-fg)' }}>
               🌐 View Original Website
@@ -740,7 +948,7 @@ function ReaderView() {
               lineHeight: lineHeights[lineHeight],
               fontFamily: fontFamily === 'original' && data.originalFont ? data.originalFont : undefined
             }}
-            dangerouslySetInnerHTML={{ __html: data.content }}
+            dangerouslySetInnerHTML={{ __html: translatedContent || data.content }}
           />
 
           {/* Bottom navigation */}
