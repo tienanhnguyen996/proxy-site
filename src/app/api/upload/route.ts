@@ -92,6 +92,17 @@ function splitIntoBatches(text: string, maxChars: number = 5000): { title: strin
   return batches;
 }
 
+async function readFileText(file: File): Promise<string> {
+  // Try native .text() first (modern runtimes)
+  if (typeof file.text === 'function') {
+    return await file.text();
+  }
+  // Fallback: read as ArrayBuffer then decode
+  const buffer = await file.arrayBuffer();
+  const decoder = new TextDecoder('utf-8');
+  return decoder.decode(buffer);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -102,8 +113,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Read file content
-    const text = await file.text();
+    if (file.size === 0) {
+      return NextResponse.json({ error: 'File is empty' }, { status: 400 });
+    }
+
+    // Read file content with fallback for older runtimes / mobile
+    const text = await readFileText(file);
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json({ error: 'File is empty' }, { status: 400 });

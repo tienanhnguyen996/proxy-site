@@ -276,7 +276,7 @@ export default function LibraryPage() {
             <h2 style={{ fontSize: '1.15rem', marginBottom: '1rem', fontWeight: 700 }}>
               ✦ Add New Novel Chapter Link
             </h2>
-            <form onSubmit={handleImport} style={{ display: 'flex', gap: '0.75rem' }}>
+            <form onSubmit={handleImport} style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               <input
                 type="url"
                 className="input"
@@ -285,7 +285,7 @@ export default function LibraryPage() {
                 onChange={(e) => setInputUrl(e.target.value)}
                 disabled={importing}
                 required
-                style={{ flex: 1 }}
+                style={{ flex: '1 1 250px' }}
               />
               <button 
                 type="submit" 
@@ -307,7 +307,7 @@ export default function LibraryPage() {
               <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: 600, color: 'var(--meta-fg)' }}>
                 📄 Or Upload a Text File as a Book
               </h3>
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <input
                   type="text"
                   className="input"
@@ -315,12 +315,10 @@ export default function LibraryPage() {
                   value={uploadTitle}
                   onChange={(e) => setUploadTitle(e.target.value)}
                   disabled={uploading}
-                  style={{ flex: 1 }}
                 />
                 <label
-                  className="btn"
+                  className="btn btn-primary"
                   style={{
-                    minWidth: '120px',
                     whiteSpace: 'nowrap',
                     cursor: uploading ? 'not-allowed' : 'pointer',
                     opacity: uploading ? 0.6 : 1,
@@ -330,10 +328,9 @@ export default function LibraryPage() {
                     gap: '0.5rem'
                   }}
                 >
-                  {uploading ? 'Uploading...' : '📁 Choose .txt File'}
+                  {uploading ? 'Uploading...' : '📁 Choose Text File'}
                   <input
                     type="file"
-                    accept=".txt,text/plain"
                     onChange={handleFileUpload}
                     disabled={uploading}
                     style={{ display: 'none' }}
