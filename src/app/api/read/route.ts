@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sql } from '@/lib/db';
+import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
 import { getUrlId, normalizeUrl } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
 
 
 function getNovelBaseUrl(chapterUrl: string): string {
+  // Handle local:// URLs for uploaded books
+  if (chapterUrl.startsWith('local://')) {
+    const match = chapterUrl.match(/^(local:\/\/[a-f0-9]+)/);
+    return match ? match[1] : chapterUrl.split('/').slice(0, 2).join('/');
+  }
+
   try {
     const url = new URL(chapterUrl);
     if (url.hostname.includes('royalroad.com')) {
@@ -40,15 +46,23 @@ export async function GET(request: NextRequest) {
   }
 
   let normalizedUrl: string;
-  try {
-    // Basic validation of URL
-    new URL(targetUrl);
+  let isLocalBook = false;
+
+  // Handle local:// URLs for uploaded books
+  if (targetUrl.startsWith('local://')) {
+    isLocalBook = true;
     normalizedUrl = normalizeUrl(targetUrl);
-  } catch {
-    return NextResponse.json(
-      { error: 'Invalid target URL format' },
-      { status: 400 }
-    );
+  } else {
+    try {
+      // Basic validation of URL
+      new URL(targetUrl);
+      normalizedUrl = normalizeUrl(targetUrl);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid target URL format' },
+        { status: 400 }
+      );
+    }
   }
 
   // Translated mode: serve pre-generated AI translation if it exists (never scrapes)
@@ -64,11 +78,20 @@ export async function GET(request: NextRequest) {
       if (translatedRows.length > 0) {
         console.log(`[TRANSLATION HIT] Chapter read: ${normalizedUrl}`);
         const row = translatedRows[0];
+        // Apply replace rules
+        const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+        const [globalRules, bookRules, chapterRules] = await Promise.all([
+          getReplaceRules('global'),
+          getReplaceRules('book', novelUrl),
+          getReplaceRules('chapter', normalizedUrl),
+        ]);
+        const allRules = [...globalRules, ...bookRules, ...chapterRules];
+        const content = allRules.length > 0 ? applyReplaceRules(row.content, allRules) : row.content;
         return NextResponse.json({
           title: row.title || 'Untitled',
-          content: row.content,
+          content,
           excerpt: '',
-          siteName: new URL(row.url).hostname,
+          siteName: row.url.startsWith('local://') ? 'Local Upload' : new URL(row.url).hostname,
           nextUrl: row.next_url,
           prevUrl: row.prev_url,
           originalUrl: row.url,
@@ -107,15 +130,25 @@ export async function GET(request: NextRequest) {
       console.log(`[CACHE HIT] Chapter read: ${normalizedUrl}`);
       const cached = cachedRows[0];
 
+      // Apply replace rules
+      const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+      const [globalRules, bookRules, chapterRules] = await Promise.all([
+        getReplaceRules('global'),
+        getReplaceRules('book', novelUrl),
+        getReplaceRules('chapter', normalizedUrl),
+      ]);
+      const allRules = [...globalRules, ...bookRules, ...chapterRules];
+      const content = allRules.length > 0 ? applyReplaceRules(cached.content, allRules) : cached.content;
+
       return NextResponse.json({
         title: cached.title,
-        content: cached.content,
+        content,
         excerpt: '',
-        siteName: new URL(cached.url).hostname,
+        siteName: cached.url.startsWith('local://') ? 'Local Upload' : new URL(cached.url).hostname,
         nextUrl: cached.next_url,
         prevUrl: cached.prev_url,
         originalUrl: cached.url,
-        chapters: [], // Chapters list is fetched separately from library check to optimize load performance
+        chapters: [],
         originalFont: cached.original_font,
         hasTranslation: !!cached.has_translation,
       });
@@ -125,6 +158,15 @@ export async function GET(request: NextRequest) {
   }
 
   console.log(`[CACHE MISS] Chapter read: ${normalizedUrl}`);
+
+  // For local books, content is only in the database - can't scrape
+  if (isLocalBook) {
+    return NextResponse.json(
+      { error: 'Chapter not found for this uploaded book.' },
+      { status: 404 }
+    );
+  }
+
   try {
     const response = await fetch(normalizedUrl, {
       headers: {
@@ -264,7 +306,7 @@ export async function GET(request: NextRequest) {
     // Detect Chapter List
     const chapters: { title: string; url: string }[] = [];
 
-    // 1. Try AJAX chapter option retrieval (e.g. truyenfull.today)
+    // 1. Try AJAX chapter option retrieval (e.g. truyenfull.live)
     const truyenIdInput = document.getElementById('truyen-id');
     const truyenId = truyenIdInput ? truyenIdInput.getAttribute('value') : null;
 
@@ -417,9 +459,18 @@ export async function GET(request: NextRequest) {
     const normalizedNextUrl = nextUrl ? normalizeUrl(nextUrl) : null;
     const normalizedPrevUrl = prevUrl ? normalizeUrl(prevUrl) : null;
 
-    // Save to cache database
+    // Apply replace rules
+    const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+    const [globalRules, bookRules, chapterRules] = await Promise.all([
+      getReplaceRules('global'),
+      getReplaceRules('book', novelUrl),
+      getReplaceRules('chapter', normalizedUrl),
+    ]);
+    const allRules = [...globalRules, ...bookRules, ...chapterRules];
+    const content = allRules.length > 0 && article.content ? applyReplaceRules(article.content, allRules) : (article.content || '');
+
+    // Save to cache database (save original content without rules applied)
     try {
-      const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
       const chapterId = getUrlId(normalizedUrl);
       await sql`
         INSERT INTO chapters (id, novel_url, url, title, content, next_url, prev_url, original_font)
@@ -438,7 +489,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       title: article.title || 'Untitled',
-      content: article.content,
+      content,
       excerpt: article.excerpt || '',
       siteName: article.siteName || new URL(normalizedUrl).hostname,
       nextUrl: normalizedNextUrl,

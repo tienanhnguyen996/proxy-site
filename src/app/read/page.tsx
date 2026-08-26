@@ -17,6 +17,12 @@ interface ArticleData {
 }
 
 function getNovelBaseUrl(chapterUrl: string): string {
+  // Handle local:// URLs for uploaded books
+  if (chapterUrl.startsWith('local://')) {
+    const match = chapterUrl.match(/^(local:\/\/[a-f0-9]+)/);
+    return match ? match[1] : chapterUrl.split('/').slice(0, 2).join('/');
+  }
+
   try {
     const url = new URL(chapterUrl);
     if (url.hostname.includes('royalroad.com')) {
@@ -93,6 +99,10 @@ function ReaderView() {
   
   // UI State
   const [showSettings, setShowSettings] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+  const [rules, setRules] = useState<{ id: string; scope: string; scope_value: string | null; find_text: string; replace_with: string; is_regex: boolean; is_enabled: boolean }[]>([]);
+  const [ruleForm, setRuleForm] = useState({ scope: 'global', find_text: '', replace_with: '', is_regex: false });
+  const [rulesLoading, setRulesLoading] = useState(false);
   const [loading, setLoading] = useState(() => !targetUrl);
   const [error, setError] = useState<string | null>(() => !targetUrl ? 'No URL provided to read.' : null);
   const [data, setData] = useState<ArticleData | null>(null);
@@ -526,6 +536,83 @@ function ReaderView() {
     localStorage.setItem('aetherread_mode', newMode);
   };
 
+  // Replace Rules management
+  const fetchRules = async () => {
+    setRulesLoading(true);
+    try {
+      const res = await fetch('/api/rules');
+      if (res.ok) {
+        const data = await res.json();
+        setRules(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch rules:', err);
+    } finally {
+      setRulesLoading(false);
+    }
+  };
+
+  const addRule = async () => {
+    if (!ruleForm.find_text || !ruleForm.replace_with) return;
+    const scopeValue = ruleForm.scope === 'book'
+      ? (data ? getNovelBaseUrl(data.originalUrl) : null)
+      : ruleForm.scope === 'chapter'
+        ? (data?.originalUrl || null)
+        : null;
+
+    try {
+      const res = await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...ruleForm, scope_value: scopeValue })
+      });
+      if (res.ok) {
+        setRuleForm({ scope: 'global', find_text: '', replace_with: '', is_regex: false });
+        await fetchRules();
+        // Refresh content to apply new rule
+        if (targetUrl) {
+          router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to add rule:', err);
+    }
+  };
+
+  const deleteRule = async (id: string) => {
+    try {
+      const res = await fetch(`/api/rules?id=${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await fetchRules();
+        if (targetUrl) {
+          router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete rule:', err);
+    }
+  };
+
+  const toggleRule = async (id: string, currentEnabled: boolean) => {
+    const rule = rules.find(r => r.id === id);
+    if (!rule) return;
+    try {
+      const res = await fetch('/api/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...rule, is_enabled: !currentEnabled })
+      });
+      if (res.ok) {
+        await fetchRules();
+        if (targetUrl) {
+          router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle rule:', err);
+    }
+  };
+
   // Lazily fetch AI translation for the current chapter when in translated mode
   useEffect(() => {
     if (!data || mode !== 'translated') return;
@@ -914,6 +1001,144 @@ function ReaderView() {
                 </button>
               </div>
             </div>
+
+            {/* Replace Rules */}
+            <div className="control-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '12px' }}>
+              <button
+                className="control-btn btn"
+                style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                onClick={() => {
+                  setShowRules(!showRules);
+                  if (!showRules) fetchRules();
+                }}
+              >
+                <span>Replace Rules</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--meta-fg)' }}>
+                  {showRules ? '▲' : '▼'}
+                </span>
+              </button>
+
+              {showRules && (
+                <div style={{ marginTop: '10px' }}>
+                  {/* Add new rule form */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <select
+                        value={ruleForm.scope}
+                        onChange={(e) => setRuleForm({ ...ruleForm, scope: e.target.value })}
+                        style={{
+                          padding: '0.375rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--card-bg)',
+                          color: 'var(--fg)',
+                          fontSize: '0.75rem',
+                          flex: '0 0 80px'
+                        }}
+                      >
+                        <option value="global">Global</option>
+                        <option value="book">Book</option>
+                        <option value="chapter">Chapter</option>
+                      </select>
+                      <input
+                        type="text"
+                        placeholder="Find"
+                        value={ruleForm.find_text}
+                        onChange={(e) => setRuleForm({ ...ruleForm, find_text: e.target.value })}
+                        style={{
+                          padding: '0.375rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--card-bg)',
+                          color: 'var(--fg)',
+                          fontSize: '0.75rem',
+                          flex: 1
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input
+                        type="text"
+                        placeholder="Replace with"
+                        value={ruleForm.replace_with}
+                        onChange={(e) => setRuleForm({ ...ruleForm, replace_with: e.target.value })}
+                        style={{
+                          padding: '0.375rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border)',
+                          background: 'var(--card-bg)',
+                          color: 'var(--fg)',
+                          fontSize: '0.75rem',
+                          flex: 1
+                        }}
+                      />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: 'var(--meta-fg)', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={ruleForm.is_regex}
+                          onChange={(e) => setRuleForm({ ...ruleForm, is_regex: e.target.checked })}
+                        />
+                        Regex
+                      </label>
+                      <button
+                        className="btn btn-primary"
+                        style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}
+                        onClick={addRule}
+                        disabled={!ruleForm.find_text}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Rules list */}
+                  {rulesLoading ? (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--meta-fg)', textAlign: 'center', padding: '8px' }}>Loading...</div>
+                  ) : rules.length === 0 ? (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--meta-fg)', textAlign: 'center', padding: '8px' }}>No rules yet</div>
+                  ) : (
+                    <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {rules.map((rule) => (
+                        <div
+                          key={rule.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 6px',
+                            borderRadius: '4px',
+                            background: rule.is_enabled ? 'var(--accent-soft)' : 'var(--border)',
+                            fontSize: '0.7rem',
+                            opacity: rule.is_enabled ? 1 : 0.5
+                          }}
+                        >
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <span style={{ color: 'var(--meta-fg)', marginRight: '4px' }}>[{rule.scope}]</span>
+                            <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{rule.find_text}</span>
+                            {' → '}
+                            <span style={{ color: 'var(--accent)' }}>{rule.replace_with}</span>
+                          </span>
+                          <button
+                            onClick={() => toggleRule(rule.id, rule.is_enabled)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', padding: '2px' }}
+                            title={rule.is_enabled ? 'Disable' : 'Enable'}
+                          >
+                            {rule.is_enabled ? '👁' : '👁‍🗨'}
+                          </button>
+                          <button
+                            onClick={() => deleteRule(rule.id)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.7rem', padding: '2px', color: '#ef4444' }}
+                            title="Delete"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -935,9 +1160,11 @@ function ReaderView() {
               ) : null}
             </div>
             <h1 className="reader-title">{data.title}</h1>
-            <a href={data.originalUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--meta-fg)' }}>
-              🌐 View Original Website
-            </a>
+            {!data.originalUrl.startsWith('local://') && (
+              <a href={data.originalUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--meta-fg)' }}>
+                🌐 View Original Website
+              </a>
+            )}
           </div>
 
           {/* Extracted story content */}

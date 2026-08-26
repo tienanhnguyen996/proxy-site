@@ -95,5 +95,84 @@ export async function shouldUpdateProgress(novelUrl: string, incomingLastReadUrl
   }
 }
 
+/**
+ * Fetch all enabled replace rules for a given scope.
+ * Returns rules ordered by scope priority (chapter > book > global) then sort_order.
+ */
+export async function getReplaceRules(
+  scope: 'global' | 'book' | 'chapter',
+  scopeValue?: string
+): Promise<{ find_text: string; replace_with: string; is_regex: boolean }[]> {
+  try {
+    type RuleRow = { find_text: string; replace_with: string; is_regex: boolean };
+    let rules: RuleRow[];
+    if (scope === 'chapter' && scopeValue) {
+      rules = await sql`
+        SELECT find_text, replace_with, is_regex
+        FROM replace_rules
+        WHERE is_enabled = TRUE
+          AND (
+            (scope = 'global')
+            OR (scope = 'book' AND scope_value = ${scopeValue})
+            OR (scope = 'chapter' AND scope_value = ${scopeValue})
+          )
+        ORDER BY
+          CASE scope WHEN 'chapter' THEN 0 WHEN 'book' THEN 1 WHEN 'global' THEN 2 END,
+          sort_order
+      ` as RuleRow[];
+    } else if (scope === 'book' && scopeValue) {
+      rules = await sql`
+        SELECT find_text, replace_with, is_regex
+        FROM replace_rules
+        WHERE is_enabled = TRUE
+          AND (
+            (scope = 'global')
+            OR (scope = 'book' AND scope_value = ${scopeValue})
+          )
+        ORDER BY
+          CASE scope WHEN 'book' THEN 0 WHEN 'global' THEN 1 END,
+          sort_order
+      ` as RuleRow[];
+    } else {
+      rules = await sql`
+        SELECT find_text, replace_with, is_regex
+        FROM replace_rules
+        WHERE is_enabled = TRUE AND scope = 'global'
+        ORDER BY sort_order
+      ` as RuleRow[];
+    }
+    return rules;
+  } catch (err) {
+    console.error('Failed to fetch replace rules:', err);
+    return [];
+  }
+}
+
+/**
+ * Apply replace rules to HTML content string.
+ */
+export function applyReplaceRules(
+  html: string,
+  rules: { find_text: string; replace_with: string; is_regex: boolean }[]
+): string {
+  let result = html;
+  for (const rule of rules) {
+    try {
+      if (rule.is_regex) {
+        const regex = new RegExp(rule.find_text, 'gi');
+        result = result.replace(regex, rule.replace_with);
+      } else {
+        // Simple string replacement (case-insensitive)
+        const escaped = rule.find_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(escaped, 'gi');
+        result = result.replace(regex, rule.replace_with);
+      }
+    } catch (e) {
+      console.error(`Failed to apply replace rule "${rule.find_text}":`, e);
+    }
+  }
+  return result;
+}
+
 export default sql;
 

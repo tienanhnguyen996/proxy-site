@@ -28,6 +28,12 @@ export default function LibraryPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
+  // Upload State
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [uploadTitle, setUploadTitle] = useState('');
+
   const router = useRouter();
 
   // Load books on mount
@@ -131,6 +137,49 @@ export default function LibraryPage() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.name.endsWith('.txt') && file.type !== 'text/plain') {
+      setUploadError('Please upload a .txt file');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('title', uploadTitle.trim() || file.name.replace(/\.txt$/i, ''));
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to upload file');
+      }
+
+      setUploadSuccess(data.message);
+      setUploadTitle('');
+      // Reset file input
+      e.target.value = '';
+      await fetchLibrary();
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : 'An error occurred during upload.';
+      setUploadError(errorMsg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDelete = async (novelUrl: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid triggering card click
     
@@ -231,7 +280,7 @@ export default function LibraryPage() {
               <input
                 type="url"
                 className="input"
-                placeholder="Paste any chapter URL (e.g. https://truyenfull.today/truyen-slug/chuong-1/)"
+                placeholder="Paste any chapter URL (e.g. https://truyenfull.live/truyen-slug/chuong-1/)"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
                 disabled={importing}
@@ -252,6 +301,56 @@ export default function LibraryPage() {
                 ⚠️ {importError}
               </div>
             )}
+
+            {/* Upload Text File Section */}
+            <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: 600, color: 'var(--meta-fg)' }}>
+                📄 Or Upload a Text File as a Book
+              </h3>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Book title (optional, uses filename if empty)"
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  disabled={uploading}
+                  style={{ flex: 1 }}
+                />
+                <label
+                  className="btn"
+                  style={{
+                    minWidth: '120px',
+                    whiteSpace: 'nowrap',
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    opacity: uploading ? 0.6 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {uploading ? 'Uploading...' : '📁 Choose .txt File'}
+                  <input
+                    type="file"
+                    accept=".txt,text/plain"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </div>
+              {uploadError && (
+                <div style={{ color: '#ef4444', fontSize: '0.85rem', marginTop: '0.5rem', paddingLeft: '0.25rem' }}>
+                  ⚠️ {uploadError}
+                </div>
+              )}
+              {uploadSuccess && (
+                <div style={{ color: '#22c55e', fontSize: '0.85rem', marginTop: '0.5rem', paddingLeft: '0.25rem' }}>
+                  ✅ {uploadSuccess}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Library Grid */}
