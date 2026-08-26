@@ -146,6 +146,12 @@ export default function LibraryPage() {
     });
   };
 
+  const compressText = async (text: string): Promise<Blob> => {
+    const stream = new Blob([new TextEncoder().encode(text)]).stream();
+    const compressed = stream.pipeThrough(new CompressionStream('gzip'));
+    return new Response(compressed).blob();
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -171,14 +177,22 @@ export default function LibraryPage() {
         throw new Error('File is empty');
       }
 
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          title: uploadTitle.trim() || file.name.replace(/\.txt$/i, '')
-        })
-      });
+      const title = uploadTitle.trim() || file.name.replace(/\.txt$/i, '');
+
+      let res: Response;
+      if (typeof CompressionStream !== 'undefined') {
+        const compressed = await compressText(text);
+        const formData = new FormData();
+        formData.append('file', compressed, 'book.txt.gz');
+        formData.append('title', title);
+        res = await fetch('/api/upload', { method: 'POST', body: formData });
+      } else {
+        res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, title })
+        });
+      }
 
       const data = await res.json();
 

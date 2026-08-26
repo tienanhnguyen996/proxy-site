@@ -103,7 +103,28 @@ async function readFileText(file: File): Promise<string> {
   return decoder.decode(buffer);
 }
 
-export const maxDuration = 60;
+async function decompressGzip(buffer: ArrayBuffer): Promise<string> {
+  const ds = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  writer.write(new Uint8Array(buffer)).catch(() => {});
+  writer.close().catch(() => {});
+
+  const reader = ds.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new TextDecoder('utf-8').decode(result);
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -111,12 +132,7 @@ export async function POST(request: NextRequest) {
     let title: string;
     let text: string;
 
-    if (contentType.includes('application/json')) {
-      const body = await request.json();
-      text = body.text as string;
-      title = (body.title as string) || 'Untitled Book';
-    } else {
-      // Legacy FormData support
+    if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
       title = (formData.get('title') as string) || 'Untitled Book';
@@ -129,7 +145,19 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'File is empty' }, { status: 400 });
       }
 
-      text = await readFileText(file);
+      const isGzipped = file.name.endsWith('.gz') || file.type === 'application/gzip';
+      if (isGzipped) {
+        const buffer = await file.arrayBuffer();
+        text = await decompressGzip(buffer);
+      } else {
+        text = await readFileText(file);
+      }
+    } else if (contentType.includes('application/json')) {
+      const body = await request.json();
+      text = body.text as string;
+      title = (body.title as string) || 'Untitled Book';
+    } else {
+      return NextResponse.json({ error: 'Unsupported content type' }, { status: 400 });
     }
 
     if (!text || text.trim().length === 0) {
