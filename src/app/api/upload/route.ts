@@ -103,22 +103,34 @@ async function readFileText(file: File): Promise<string> {
   return decoder.decode(buffer);
 }
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File | null;
-    const title = formData.get('title') as string || 'Untitled Book';
+    const contentType = request.headers.get('content-type') || '';
+    let title: string;
+    let text: string;
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    if (contentType.includes('application/json')) {
+      const body = await request.json();
+      text = body.text as string;
+      title = (body.title as string) || 'Untitled Book';
+    } else {
+      // Legacy FormData support
+      const formData = await request.formData();
+      const file = formData.get('file') as File | null;
+      title = (formData.get('title') as string) || 'Untitled Book';
+
+      if (!file) {
+        return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+      }
+
+      if (file.size === 0) {
+        return NextResponse.json({ error: 'File is empty' }, { status: 400 });
+      }
+
+      text = await readFileText(file);
     }
-
-    if (file.size === 0) {
-      return NextResponse.json({ error: 'File is empty' }, { status: 400 });
-    }
-
-    // Read file content with fallback for older runtimes / mobile
-    const text = await readFileText(file);
 
     if (!text || text.trim().length === 0) {
       return NextResponse.json({ error: 'File is empty' }, { status: 400 });

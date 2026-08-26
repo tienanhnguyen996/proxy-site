@@ -1,5 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "regions": ["sin1"]
+  "regions": ["sin1"],
+  "functions": {
+    "src/app/api/upload/route.ts": {
+      "maxDuration": 60
+    }
+  }
 }

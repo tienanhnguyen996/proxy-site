@@ -137,13 +137,26 @@ export default function LibraryPage() {
     }
   };
 
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file, 'utf-8');
+    });
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.name.endsWith('.txt') && file.type !== 'text/plain') {
       setUploadError('Please upload a .txt file');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File too large. Maximum 10MB.');
       return;
     }
 
@@ -152,13 +165,19 @@ export default function LibraryPage() {
     setUploadSuccess(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('title', uploadTitle.trim() || file.name.replace(/\.txt$/i, ''));
+      const text = await readFileAsText(file);
+
+      if (!text || text.trim().length === 0) {
+        throw new Error('File is empty');
+      }
 
       const res = await fetch('/api/upload', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          title: uploadTitle.trim() || file.name.replace(/\.txt$/i, '')
+        })
       });
 
       const data = await res.json();
@@ -169,7 +188,6 @@ export default function LibraryPage() {
 
       setUploadSuccess(data.message);
       setUploadTitle('');
-      // Reset file input
       e.target.value = '';
       await fetchLibrary();
     } catch (err: unknown) {
