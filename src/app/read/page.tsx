@@ -1159,7 +1159,7 @@ function ReaderView() {
                 <div style={{ marginTop: '10px' }}>
                   {/* Add new rule form */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
-                    <div style={{ display: 'flex', gap: '4px' }}>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                       <select
                         value={ruleForm.scope}
                         onChange={(e) => setRuleForm({ ...ruleForm, scope: e.target.value })}
@@ -1170,7 +1170,9 @@ function ReaderView() {
                           background: 'var(--card-bg)',
                           color: 'var(--fg)',
                           fontSize: '0.75rem',
-                          flex: '0 0 80px'
+                          flex: '1 1 90px',
+                          minWidth: '90px',
+                          maxWidth: '110px'
                         }}
                       >
                         <option value="global">Global</option>
@@ -1189,9 +1191,18 @@ function ReaderView() {
                           background: 'var(--card-bg)',
                           color: 'var(--fg)',
                           fontSize: '0.75rem',
-                          flex: 1
+                          flex: '2 1 140px',
+                          minWidth: '120px'
                         }}
                       />
+                      <button
+                        className="btn btn-primary"
+                        style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem', alignSelf: 'stretch' }}
+                        onClick={addRule}
+                        disabled={!ruleForm.find_text}
+                      >
+                        +
+                      </button>
                     </div>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <input
@@ -1206,9 +1217,12 @@ function ReaderView() {
                           background: 'var(--card-bg)',
                           color: 'var(--fg)',
                           fontSize: '0.75rem',
-                          flex: 1
+                          flex: 1,
+                          minWidth: '0'
                         }}
                       />
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: 'var(--meta-fg)', whiteSpace: 'nowrap' }}>
                         <input
                           type="checkbox"
@@ -1223,7 +1237,7 @@ function ReaderView() {
                           checked={ruleForm.case_sensitive}
                           onChange={(e) => setRuleForm({ ...ruleForm, case_sensitive: e.target.checked })}
                         />
-                        Aa
+                        Aa (case)
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: 'var(--meta-fg)', whiteSpace: 'nowrap' }}>
                         <input
@@ -1231,16 +1245,8 @@ function ReaderView() {
                           checked={ruleForm.ignore_accents}
                           onChange={(e) => setRuleForm({ ...ruleForm, ignore_accents: e.target.checked })}
                         />
-                        Accent
+                        Accent (accent-insensitive)
                       </label>
-                      <button
-                        className="btn btn-primary"
-                        style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}
-                        onClick={addRule}
-                        disabled={!ruleForm.find_text}
-                      >
-                        +
-                      </button>
                     </div>
                   </div>
 
