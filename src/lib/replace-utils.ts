@@ -57,6 +57,48 @@ export function normalizeForMatch(
 }
 
 /**
+ * Build a set of all diacritic variants for a base Vietnamese letter.
+ * e.g. for 'a' -> 'aàáảãạăằắẳẵặâầấẩẫậ', for 'd' -> 'dđ'.
+ */
+function variantsFor(base: string): string {
+  switch (base) {
+    case 'a': return 'aàáảãạăằắẳẵặâầấẩẫậ';
+    case 'd': return 'dđ';
+    case 'e': return 'eèéẻẽẹêềếểễệ';
+    case 'i': return 'iìíỉĩị';
+    case 'o': return 'oòóỏõọôồốổỗộơờớởỡợ';
+    case 'u': return 'uùúủũụưừứửữự';
+    case 'y': return 'yỳýỷỹỵ';
+    default: return base;
+  }
+}
+
+// Reverse lookup: any Vietnamese accented char -> its base letter.
+function baseOf(ch: string): string {
+  return VIETNAMESE_MAP[ch.toLowerCase()] || ch;
+}
+
+/**
+ * Build an accent-flexible regex source from a literal find string.
+ * Each Vietnamese letter is expanded to a character class matching all its
+ * diacritic variants regardless of accent placement, so "Tùy" matches "Tùy"
+ * or "Tuỳ" (and every other combo of T/u/y with any/zero accents).
+ */
+export function accentFlexibleSource(literal: string): string {
+  let out = '';
+  for (const ch of literal) {
+    const base = baseOf(ch);
+    const variants = variantsFor(base);
+    if (variants.length > 1) {
+      out += `[${variants}${variants.toUpperCase()}]`;
+    } else {
+      out += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  return out;
+}
+
+/**
  * Apply a list of text rules to an input string.
  * Rules are objects with find_text, replace_with, is_regex, and matching options.
  */
@@ -78,7 +120,37 @@ export function applyTextRules(
 
       if (rule.is_regex) {
         const flags = caseSensitive ? 'g' : 'gi';
-        result = result.replace(new RegExp(rule.find_text, flags), rule.replace_with);
+
+        if (ignoreAccents) {
+          // Regex that matches any diacritic variant of each accented letter.
+          // Do not anchor; build char-class variants for accent letters while
+          // preserving the rest of the user's regex metacharacters.
+          let source = '';
+          let i = 0;
+          while (i < rule.find_text.length) {
+            const ch = rule.find_text[i];
+            // Handle escape sequences (e.g. \d, \., \\)
+            if (ch === '\\' && i + 1 < rule.find_text.length) {
+              source += ch + rule.find_text[i + 1];
+              i += 2;
+              continue;
+            }
+            // Handle unquoted character classes [ ... ] as-is
+            if (ch === '[') {
+              let j = i + 1;
+              while (j < rule.find_text.length && rule.find_text[j] !== ']') j++;
+              source += rule.find_text.slice(i, j + 1);
+              i = j + 1;
+              continue;
+            }
+            // Expand single Vietnamese letter to all variants
+            source += accentFlexibleSource(ch);
+            i++;
+          }
+          result = result.replace(new RegExp(source, flags), rule.replace_with);
+        } else {
+          result = result.replace(new RegExp(rule.find_text, flags), rule.replace_with);
+        }
       } else {
         if (ignoreAccents) {
           result = replaceIgnoringAccents(
