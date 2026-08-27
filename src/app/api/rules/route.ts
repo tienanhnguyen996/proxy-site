@@ -53,6 +53,8 @@ export async function POST(request: NextRequest) {
       replace_with,
       is_regex = false,
       is_enabled = true,
+      case_sensitive = false,
+      ignore_accents = false,
       sort_order = 0
     } = body;
 
@@ -94,14 +96,16 @@ export async function POST(request: NextRequest) {
             replace_with = ${replace_with},
             is_regex = ${is_regex},
             is_enabled = ${is_enabled},
+            case_sensitive = ${case_sensitive},
+            ignore_accents = ${ignore_accents},
             sort_order = ${sort_order}
         WHERE id = ${id}
       `;
     } else {
       // Insert new rule
       await sql`
-        INSERT INTO replace_rules (id, scope, scope_value, find_text, replace_with, is_regex, is_enabled, sort_order)
-        VALUES (${ruleId}, ${scope}, ${scope_value || null}, ${find_text}, ${replace_with}, ${is_regex}, ${is_enabled}, ${sort_order})
+        INSERT INTO replace_rules (id, scope, scope_value, find_text, replace_with, is_regex, is_enabled, case_sensitive, ignore_accents, sort_order)
+        VALUES (${ruleId}, ${scope}, ${scope_value || null}, ${find_text}, ${replace_with}, ${is_regex}, ${is_enabled}, ${case_sensitive}, ${ignore_accents}, ${sort_order})
       `;
     }
 

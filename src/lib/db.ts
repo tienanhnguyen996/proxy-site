@@ -1,5 +1,6 @@
 import { neon } from '@neondatabase/serverless';
 import { normalizeUrl } from './utils';
+import { applyTextRules } from './replace-utils';
 
 const connectionString =
   process.env.DATABASE_URL ||
@@ -102,13 +103,13 @@ export async function shouldUpdateProgress(novelUrl: string, incomingLastReadUrl
 export async function getReplaceRules(
   scope: 'global' | 'book' | 'chapter',
   scopeValue?: string
-): Promise<{ find_text: string; replace_with: string; is_regex: boolean }[]> {
+): Promise<{ find_text: string; replace_with: string; is_regex: boolean; case_sensitive: boolean; ignore_accents: boolean }[]> {
   try {
-    type RuleRow = { find_text: string; replace_with: string; is_regex: boolean };
+    type RuleRow = { find_text: string; replace_with: string; is_regex: boolean; case_sensitive: boolean; ignore_accents: boolean };
     let rules: RuleRow[];
     if (scope === 'chapter' && scopeValue) {
       rules = await sql`
-        SELECT find_text, replace_with, is_regex
+        SELECT find_text, replace_with, is_regex, case_sensitive, ignore_accents
         FROM replace_rules
         WHERE is_enabled = TRUE
           AND (
@@ -122,7 +123,7 @@ export async function getReplaceRules(
       ` as RuleRow[];
     } else if (scope === 'book' && scopeValue) {
       rules = await sql`
-        SELECT find_text, replace_with, is_regex
+        SELECT find_text, replace_with, is_regex, case_sensitive, ignore_accents
         FROM replace_rules
         WHERE is_enabled = TRUE
           AND (
@@ -135,7 +136,7 @@ export async function getReplaceRules(
       ` as RuleRow[];
     } else {
       rules = await sql`
-        SELECT find_text, replace_with, is_regex
+        SELECT find_text, replace_with, is_regex, case_sensitive, ignore_accents
         FROM replace_rules
         WHERE is_enabled = TRUE AND scope = 'global'
         ORDER BY sort_order
@@ -153,25 +154,9 @@ export async function getReplaceRules(
  */
 export function applyReplaceRules(
   html: string,
-  rules: { find_text: string; replace_with: string; is_regex: boolean }[]
+  rules: { find_text: string; replace_with: string; is_regex: boolean; case_sensitive?: boolean; ignore_accents?: boolean }[]
 ): string {
-  let result = html;
-  for (const rule of rules) {
-    try {
-      if (rule.is_regex) {
-        const regex = new RegExp(rule.find_text, 'gi');
-        result = result.replace(regex, rule.replace_with);
-      } else {
-        // Simple string replacement (case-insensitive)
-        const escaped = rule.find_text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(escaped, 'gi');
-        result = result.replace(regex, rule.replace_with);
-      }
-    } catch (e) {
-      console.error(`Failed to apply replace rule "${rule.find_text}":`, e);
-    }
-  }
-  return result;
+  return applyTextRules(html, rules);
 }
 
 export default sql;

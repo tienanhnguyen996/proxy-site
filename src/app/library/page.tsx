@@ -1,7 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  getAllBooks,
+  getBook,
+  putBook,
+  deleteBook as deleteLocalBook,
+  putChapters,
+  type LocalBook,
+  type LocalChapter,
+} from '@/lib/localdb';
+import { detectChapters, splitIntoBatches, textToHtml } from '@/lib/chapters-client';
+import { applyTextRules } from '@/lib/replace-utils';
+import { getLocalRulesForChapter, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalRule } from '@/lib/localdb';
 
 interface LibraryBook {
   id: string;
@@ -16,6 +28,7 @@ interface LibraryBook {
   scroll_position: number;
   updated_at: string;
   chapters_list: string; // JSON string of { title: string, url: string }[]
+  is_local?: boolean;
 }
 
 export default function LibraryPage() {
@@ -45,12 +58,33 @@ export default function LibraryPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/library?include_chapters=true');
-      if (!res.ok) {
-        throw new Error('Failed to fetch library list');
-      }
-      const data = await res.json();
-      setBooks(data);
+      const localBooks = await getAllBooks();
+      const localMapped: LibraryBook[] = localBooks.map((b) => ({
+        id: b.novel_url,
+        novel_url: b.novel_url,
+        title: b.title,
+        author: null,
+        cover_url: null,
+        site_name: b.site_name,
+        total_chapters: b.total_chapters,
+        last_read_url: b.last_read_url,
+        last_read_title: b.last_read_title,
+        scroll_position: b.scroll_position,
+        updated_at: b.updated_at,
+        chapters_list: b.chapters_list,
+        is_local: true,
+      }));
+
+      let cloud: LibraryBook[] = [];
+      try {
+        const res = await fetch('/api/library?include_chapters=true');
+        if (res.ok) {
+          cloud = await res.json();
+        }
+      } catch {}
+
+      const combined = [...cloud, ...localMapped];
+      setBooks(combined);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'An error occurred while loading your library.';
       setError(errorMsg);
@@ -146,12 +180,6 @@ export default function LibraryPage() {
     });
   };
 
-  const compressText = async (text: string): Promise<Blob> => {
-    const stream = new Blob([new TextEncoder().encode(text)]).stream();
-    const compressed = stream.pipeThrough(new CompressionStream('gzip'));
-    return new Response(compressed).blob();
-  };
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -179,28 +207,47 @@ export default function LibraryPage() {
 
       const title = uploadTitle.trim() || file.name.replace(/\.txt$/i, '');
 
-      let res: Response;
-      if (typeof CompressionStream !== 'undefined') {
-        const compressed = await compressText(text);
-        const formData = new FormData();
-        formData.append('file', compressed, 'book.txt.gz');
-        formData.append('title', title);
-        res = await fetch('/api/upload', { method: 'POST', body: formData });
-      } else {
-        res = await fetch('/api/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, title })
-        });
+      let detected = detectChapters(text);
+      if (!detected || detected.length < 2) {
+        detected = splitIntoBatches(text);
       }
+      const chapterList = detected;
 
-      const data = await res.json();
+      const bookId = [...crypto.getRandomValues(new Uint8Array(8))]
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      const novelUrl = `local://${bookId}`;
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to upload file');
-      }
+      const chaptersList = chapterList.map((ch, i) => ({
+        title: ch.title,
+        url: `${novelUrl}/chapter-${i + 1}`,
+      }));
 
-      setUploadSuccess(data.message);
+      const chaptersToStore: LocalChapter[] = chapterList.map((ch, i) => ({
+        url: `${novelUrl}/chapter-${i + 1}`,
+        novel_url: novelUrl,
+        title: ch.title,
+        content: textToHtml(ch.content),
+        next_url: i + 1 < chapterList.length ? `${novelUrl}/chapter-${i + 2}` : null,
+        prev_url: i > 0 ? `${novelUrl}/chapter-${i}` : null,
+      }));
+
+      await putChapters(chaptersToStore);
+
+      const book: LocalBook = {
+        novel_url: novelUrl,
+        title,
+        site_name: 'Local Upload',
+        total_chapters: chaptersList.length,
+        chapters_list: JSON.stringify(chaptersList),
+        last_read_url: null,
+        last_read_title: null,
+        scroll_position: 0,
+        updated_at: new Date().toISOString(),
+      };
+      await putBook(book);
+
+      setUploadSuccess(`Imported "${title}" with ${chaptersList.length} chapters (stored on this device)`);
       setUploadTitle('');
       e.target.value = '';
       await fetchLibrary();
@@ -220,11 +267,15 @@ export default function LibraryPage() {
     }
 
     try {
-      const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}`, {
-        method: 'DELETE'
-      });
-      if (!res.ok) {
-        throw new Error('Failed to delete book');
+      if (novelUrl.startsWith('local://')) {
+        await deleteLocalBook(novelUrl);
+      } else {
+        const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) {
+          throw new Error('Failed to delete book');
+        }
       }
       setBooks(prev => prev.filter(b => b.novel_url !== novelUrl));
     } catch (err: unknown) {
@@ -295,7 +346,7 @@ export default function LibraryPage() {
             <div>
               <h1 style={{ fontSize: '2.25rem', fontWeight: 900, marginBottom: '0.25rem' }}>Your Library</h1>
               <p style={{ color: 'var(--meta-fg)', fontSize: '0.9rem' }}>
-                Cloud synced across your devices. Distraction-free novel reading.
+                Cloud synced web novels + on-device uploaded books. Distraction-free reading.
               </p>
             </div>
             <div style={{ fontSize: '0.85rem', background: 'var(--accent-soft)', color: 'var(--accent)', padding: '0.5rem 1rem', borderRadius: '20px', fontWeight: 600 }}>
@@ -337,7 +388,7 @@ export default function LibraryPage() {
             {/* Upload Text File Section */}
             <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border)' }}>
               <h3 style={{ fontSize: '0.95rem', marginBottom: '0.75rem', fontWeight: 600, color: 'var(--meta-fg)' }}>
-                📄 Or Upload a Text File as a Book
+                📄 Or Upload a Text File (stored on this device)
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                 <input
@@ -360,7 +411,7 @@ export default function LibraryPage() {
                     gap: '0.5rem'
                   }}
                 >
-                  {uploading ? 'Uploading...' : '📁 Choose Text File'}
+                  {uploading ? 'Importing...' : '📁 Choose Text File'}
                   <input
                     type="file"
                     onChange={handleFileUpload}
@@ -405,7 +456,7 @@ export default function LibraryPage() {
               <div style={{ fontSize: '3rem', marginBottom: '1.25rem' }}>📚</div>
               <h3 style={{ fontSize: '1.25rem', marginBottom: '0.5rem', fontWeight: 700 }}>Your library is empty</h3>
               <p style={{ color: 'var(--meta-fg)', maxWidth: '400px', margin: '0 auto 1.5rem auto', fontSize: '0.9rem' }}>
-                Paste a web novel chapter link in the search bar above to scrape, save, and sync it to your personal reader account.
+                Paste a web novel chapter link above to scrape and sync it, or upload a .txt file to read it locally on this device.
               </p>
             </div>
           ) : (

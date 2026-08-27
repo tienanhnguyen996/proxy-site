@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { getChapter, getBook, getLocalRulesForChapter, putBook, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalBook, type LocalRule } from '@/lib/localdb';
+import { applyTextRules } from '@/lib/replace-utils';
 
 interface ArticleData {
   title: string;
@@ -100,8 +102,8 @@ function ReaderView() {
   // UI State
   const [showSettings, setShowSettings] = useState(false);
   const [showRules, setShowRules] = useState(false);
-  const [rules, setRules] = useState<{ id: string; scope: string; scope_value: string | null; find_text: string; replace_with: string; is_regex: boolean; is_enabled: boolean }[]>([]);
-  const [ruleForm, setRuleForm] = useState({ scope: 'global', find_text: '', replace_with: '', is_regex: false });
+  const [rules, setRules] = useState<{ id: string; scope: string; scope_value: string | null; find_text: string; replace_with: string; is_regex: boolean; is_enabled: boolean; case_sensitive: boolean; ignore_accents: boolean; is_local?: boolean }[]>([]);
+  const [ruleForm, setRuleForm] = useState({ scope: 'global', find_text: '', replace_with: '', is_regex: false, case_sensitive: false, ignore_accents: false });
   const [rulesLoading, setRulesLoading] = useState(false);
   const [loading, setLoading] = useState(() => !targetUrl);
   const [error, setError] = useState<string | null>(() => !targetUrl ? 'No URL provided to read.' : null);
@@ -175,20 +177,57 @@ function ReaderView() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/read?url=${encodeURIComponent(targetUrl)}`);
-        const result = await response.json();
+        let result: ArticleData;
 
-        if (!response.ok) {
-          throw new Error(result.error || 'Failed to fetch the chapter.');
+        if (targetUrl.startsWith('local://')) {
+          // Local book: read directly from IndexedDB, no server round-trip
+          const chapter = await getChapter(targetUrl);
+          if (!chapter) {
+            throw new Error('Chapter not found for this local book.');
+          }
+          const novelUrl = getNovelBaseUrl(targetUrl);
+          const localRules = await getLocalRulesForChapter(novelUrl, targetUrl);
+          const content = localRules.length > 0
+            ? applyTextRules(chapter.content, localRules)
+            : chapter.content;
+
+          result = {
+            title: chapter.title || 'Untitled',
+            content,
+            excerpt: '',
+            siteName: 'Local Upload',
+            nextUrl: chapter.next_url,
+            prevUrl: chapter.prev_url,
+            originalUrl: targetUrl,
+            chapters: [],
+          };
+
+          // Populate chapter list from the book record so the dropdown works
+          const book = await getBook(novelUrl);
+          if (book && book.chapters_list) {
+            try {
+              const parsed = JSON.parse(book.chapters_list);
+              if (parsed && parsed.length > 0) {
+                setChapters(parsed);
+              }
+            } catch {}
+          }
+        } else {
+          const response = await fetch(`/api/read?url=${encodeURIComponent(targetUrl)}`);
+          const parsed = await response.json();
+
+          if (!response.ok) {
+            throw new Error(parsed.error || 'Failed to fetch the chapter.');
+          }
+
+          result = parsed;
+          if (parsed.chapters && parsed.chapters.length > 0) {
+            setChapters(parsed.chapters);
+          }
         }
 
         setData(result);
-        if (result.chapters && result.chapters.length > 0) {
-          setChapters(result.chapters);
-        }
-        
-        // Save to History in LocalStorage
-        saveToHistory(targetUrl, result.title || 'Untitled Chapter', result.siteName || new URL(targetUrl).hostname);
+        saveToHistory(targetUrl, result.title || 'Untitled Chapter', result.siteName || '');
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : 'An error occurred while loading content.';
         setError(errorMsg);
@@ -220,6 +259,41 @@ function ReaderView() {
     const checkLibrary = async () => {
       try {
         const novelUrl = getNovelBaseUrl(data.originalUrl);
+
+        if (novelUrl.startsWith('local://')) {
+          // Local book: read/save progress in IndexedDB
+          const book = await getBook(novelUrl);
+          if (book) {
+            setIsSaved(true);
+            if (book.chapters_list) {
+              try {
+                const parsedList = JSON.parse(book.chapters_list);
+                if (parsedList && parsedList.length > 0) {
+                  setChapters(parsedList);
+                }
+              } catch {}
+            }
+            if (book.last_read_url) {
+              lastSavedUrlRef.current = book.last_read_url;
+              lastSavedProgressRef.current = book.scroll_position || 0;
+            }
+            if (book.last_read_url === data.originalUrl && book.scroll_position > 0) {
+              setTimeout(() => {
+                const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+                if (totalHeight > 0) {
+                  window.scrollTo(0, (book.scroll_position / 100) * totalHeight);
+                  lastSavedProgressRef.current = book.scroll_position;
+                  lastSavedUrlRef.current = data.originalUrl;
+                }
+              }, 250);
+            }
+          } else {
+            // Not in IndexedDB library but readable → treat as saved so Save button is consistent
+            setIsSaved(true);
+          }
+          return;
+        }
+
         const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}&include_chapters=true`);
         if (res.ok) {
           const matched = await res.json();
@@ -273,6 +347,7 @@ function ReaderView() {
     let active = true;
 
     const checkRemoteProgress = async () => {
+      if (data.originalUrl.startsWith('local://')) return;
       try {
         const novelUrl = getNovelBaseUrl(data.originalUrl);
         const res = await fetch(`/api/library?novel_url=${encodeURIComponent(novelUrl)}&include_chapters=true`);
@@ -323,6 +398,8 @@ function ReaderView() {
   // Lazy pre-fetch next 5 chapters in background to Neon DB
   useEffect(() => {
     if (!data || !chapters || chapters.length === 0) return;
+    // Local books are stored fully on-device; no server pre-fetch needed
+    if (data.originalUrl.startsWith('local://')) return;
 
     const currentIndex = chapters.findIndex(c => c.url === data.originalUrl);
     if (currentIndex === -1) return;
@@ -350,6 +427,25 @@ function ReaderView() {
   async function saveProgress(scrollPos: number, url: string = data?.originalUrl || '', title: string = data?.title || '') {
     if (!data || !isSaved || !url) return;
     const novelUrl = getNovelBaseUrl(url);
+
+    if (novelUrl.startsWith('local://')) {
+      try {
+        const book = await getBook(novelUrl);
+        if (book) {
+          await putBook({
+            ...book,
+            last_read_url: url,
+            last_read_title: title,
+            scroll_position: scrollPos,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.error('Failed to save local progress:', err);
+      }
+      return;
+    }
+
     try {
       await fetch('/api/library/progress', {
         method: 'POST',
@@ -368,6 +464,13 @@ function ReaderView() {
 
   const handleSaveToLibrary = async () => {
     if (!data) return;
+
+    // Local books are already saved by definition
+    if (data.originalUrl.startsWith('local://')) {
+      setIsSaved(true);
+      return;
+    }
+
     setSaving(true);
     try {
       const novelUrl = getNovelBaseUrl(data.originalUrl);
@@ -540,10 +643,16 @@ function ReaderView() {
   const fetchRules = async () => {
     setRulesLoading(true);
     try {
-      const res = await fetch('/api/rules');
-      if (res.ok) {
-        const data = await res.json();
-        setRules(data);
+      if (data && data.originalUrl.startsWith('local://')) {
+        // Local book: rules stored in IndexedDB
+        const localRules = await getAllLocalRules();
+        setRules(localRules);
+      } else {
+        const res = await fetch('/api/rules');
+        if (res.ok) {
+          const dataJson = await res.json();
+          setRules(dataJson);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch rules:', err);
@@ -561,18 +670,36 @@ function ReaderView() {
         : null;
 
     try {
-      const res = await fetch('/api/rules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...ruleForm, scope_value: scopeValue })
-      });
-      if (res.ok) {
-        setRuleForm({ scope: 'global', find_text: '', replace_with: '', is_regex: false });
+      if (data && data.originalUrl.startsWith('local://')) {
+        const newRule: LocalRule = {
+          id: Math.random().toString(36).slice(2),
+          scope: ruleForm.scope as 'global' | 'book' | 'chapter',
+          scope_value: scopeValue,
+          find_text: ruleForm.find_text,
+          replace_with: ruleForm.replace_with,
+          is_regex: ruleForm.is_regex,
+          is_enabled: true,
+          case_sensitive: ruleForm.case_sensitive,
+          ignore_accents: ruleForm.ignore_accents,
+          sort_order: 0,
+        };
+        await putLocalRule(newRule);
+        setRuleForm({ scope: 'global', find_text: '', replace_with: '', is_regex: false, case_sensitive: false, ignore_accents: false });
         await fetchRules();
-        // Refresh content to apply new rule
-        if (targetUrl) {
-          router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+      } else {
+        const res = await fetch('/api/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...ruleForm, scope_value: scopeValue })
+        });
+        if (res.ok) {
+          setRuleForm({ scope: 'global', find_text: '', replace_with: '', is_regex: false, case_sensitive: false, ignore_accents: false });
+          await fetchRules();
         }
+      }
+      // Refresh content to apply new rule
+      if (targetUrl) {
+        router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
       }
     } catch (err) {
       console.error('Failed to add rule:', err);
@@ -581,12 +708,17 @@ function ReaderView() {
 
   const deleteRule = async (id: string) => {
     try {
-      const res = await fetch(`/api/rules?id=${id}`, { method: 'DELETE' });
-      if (res.ok) {
+      if (data && data.originalUrl.startsWith('local://')) {
+        await deleteLocalRule(id);
         await fetchRules();
-        if (targetUrl) {
-          router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+      } else {
+        const res = await fetch(`/api/rules?id=${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          await fetchRules();
         }
+      }
+      if (targetUrl) {
+        router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
       }
     } catch (err) {
       console.error('Failed to delete rule:', err);
@@ -597,16 +729,21 @@ function ReaderView() {
     const rule = rules.find(r => r.id === id);
     if (!rule) return;
     try {
-      const res = await fetch('/api/rules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...rule, is_enabled: !currentEnabled })
-      });
-      if (res.ok) {
+      if (data && data.originalUrl.startsWith('local://')) {
+        await putLocalRule({ ...(rule as LocalRule), is_enabled: !currentEnabled });
         await fetchRules();
-        if (targetUrl) {
-          router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
+      } else {
+        const res = await fetch('/api/rules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...rule, is_enabled: !currentEnabled })
+        });
+        if (res.ok) {
+          await fetchRules();
         }
+      }
+      if (targetUrl) {
+        router.push(`/read?url=${encodeURIComponent(targetUrl)}`);
       }
     } catch (err) {
       console.error('Failed to toggle rule:', err);
@@ -1080,6 +1217,22 @@ function ReaderView() {
                         />
                         Regex
                       </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: 'var(--meta-fg)', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={ruleForm.case_sensitive}
+                          onChange={(e) => setRuleForm({ ...ruleForm, case_sensitive: e.target.checked })}
+                        />
+                        Aa
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', color: 'var(--meta-fg)', whiteSpace: 'nowrap' }}>
+                        <input
+                          type="checkbox"
+                          checked={ruleForm.ignore_accents}
+                          onChange={(e) => setRuleForm({ ...ruleForm, ignore_accents: e.target.checked })}
+                        />
+                        Accent
+                      </label>
                       <button
                         className="btn btn-primary"
                         style={{ padding: '0.375rem 0.75rem', fontSize: '0.75rem' }}
@@ -1113,7 +1266,7 @@ function ReaderView() {
                           }}
                         >
                           <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <span style={{ color: 'var(--meta-fg)', marginRight: '4px' }}>[{rule.scope}]</span>
+                            <span style={{ color: 'var(--meta-fg)', marginRight: '4px' }}>[{rule.scope}{rule.case_sensitive ? '·Aa' : ''}{rule.ignore_accents ? '·~' : ''}]</span>
                             <span style={{ textDecoration: 'line-through', opacity: 0.6 }}>{rule.find_text}</span>
                             {' → '}
                             <span style={{ color: 'var(--accent)' }}>{rule.replace_with}</span>
