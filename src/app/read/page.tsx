@@ -851,6 +851,24 @@ function ReaderView() {
   const translatedContent = mode === 'translated' ? translations[data.originalUrl] : undefined;
   const isShowingTranslation = !!translatedContent;
 
+  const currentChapterIndex = chapters && chapters.length > 0 && data
+    ? chapters.findIndex(c => {
+        const norm = (u: string) => {
+          try {
+            let p = new URL(u).pathname;
+            if (p.endsWith('/')) p = p.slice(0, -1);
+            return p;
+          } catch {
+            return u;
+          }
+        };
+        return norm(c.url) === norm(data.originalUrl);
+      })
+    : -1;
+
+  const effectivePrevUrl = data.prevUrl || (currentChapterIndex > 0 ? chapters[currentChapterIndex - 1]?.url : null);
+  const effectiveNextUrl = data.nextUrl || (currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1]?.url : null);
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Scroll Progress Bar */}
@@ -1339,16 +1357,22 @@ function ReaderView() {
 
           {/* Bottom navigation */}
           <div className="chapter-nav" style={{ alignItems: 'center' }}>
-            {data.prevUrl ? (
+            {effectivePrevUrl ? (
               <button 
                 className="btn"
-                onClick={() => handleChapterChange(data.prevUrl!)}
+                onClick={() => handleChapterChange(effectivePrevUrl)}
                 style={{ minWidth: '90px' }}
               >
                 ◀ Prev
               </button>
             ) : (
-              <div style={{ flex: 1, minWidth: '90px' }}></div>
+              <button 
+                className="btn" 
+                disabled 
+                style={{ minWidth: '90px', opacity: 0.4, cursor: 'not-allowed' }}
+              >
+                ◀ Prev
+              </button>
             )}
             
             {chapters && chapters.length > 0 ? (
@@ -1381,16 +1405,22 @@ function ReaderView() {
               </button>
             )}
 
-            {data.nextUrl ? (
+            {effectiveNextUrl ? (
               <button 
                 className="btn btn-primary"
-                onClick={() => handleChapterChange(data.nextUrl!)}
+                onClick={() => handleChapterChange(effectiveNextUrl)}
                 style={{ minWidth: '90px' }}
               >
                 Next ▶
               </button>
             ) : (
-              <div style={{ flex: 1, minWidth: '90px' }}></div>
+              <button 
+                className="btn btn-primary" 
+                disabled 
+                style={{ minWidth: '90px', opacity: 0.4, cursor: 'not-allowed' }}
+              >
+                Next ▶
+              </button>
             )}
           </div>
         </article>

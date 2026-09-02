@@ -140,15 +140,38 @@ export async function GET(request: NextRequest) {
       const allRules = [...globalRules, ...bookRules, ...chapterRules];
       const content = allRules.length > 0 ? applyReplaceRules(cached.content, allRules) : cached.content;
 
+      let libraryChapters: { title: string; url: string }[] = [];
+      let resolvedNextUrl = cached.next_url;
+      let resolvedPrevUrl = cached.prev_url;
+
+      try {
+        const libRows = await sql`
+          SELECT chapters_list FROM library WHERE novel_url = ${novelUrl} LIMIT 1
+        `;
+        if (libRows.length > 0 && libRows[0].chapters_list) {
+          const list = JSON.parse(libRows[0].chapters_list);
+          if (Array.isArray(list)) {
+            libraryChapters = list;
+            const idx = list.findIndex((c: { url: string }) => normalizeUrl(c.url) === normalizedUrl);
+            if (idx !== -1) {
+              if (!resolvedPrevUrl && idx > 0) resolvedPrevUrl = list[idx - 1].url;
+              if (!resolvedNextUrl && idx < list.length - 1) resolvedNextUrl = list[idx + 1].url;
+            }
+          }
+        }
+      } catch (libErr) {
+        console.error('Failed to resolve library chapters on cache hit:', libErr);
+      }
+
       return NextResponse.json({
         title: cached.title,
         content,
         excerpt: '',
         siteName: cached.url.startsWith('local://') ? 'Local Upload' : new URL(cached.url).hostname,
-        nextUrl: cached.next_url,
-        prevUrl: cached.prev_url,
+        nextUrl: resolvedNextUrl,
+        prevUrl: resolvedPrevUrl,
         originalUrl: cached.url,
-        chapters: [],
+        chapters: libraryChapters,
         originalFont: cached.original_font,
         hasTranslation: !!cached.has_translation,
       });
@@ -238,23 +261,35 @@ export async function GET(request: NextRequest) {
 
     const links = Array.from(document.querySelectorAll('a')) as HTMLAnchorElement[];
     for (const link of links) {
-      const text = link.textContent?.trim().toLowerCase() || '';
-      const id = link.getAttribute('id')?.toLowerCase() || '';
+      const text = (link.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const id = (link.getAttribute('id') || '').toLowerCase();
+      const rel = (link.getAttribute('rel') || '').toLowerCase();
+      const className = (link.getAttribute('class') || '').toLowerCase();
+      const ariaLabel = (link.getAttribute('aria-label') || '').toLowerCase();
+      const title = (link.getAttribute('title') || '').toLowerCase();
       const href = link.getAttribute('href');
-      const title = link.getAttribute('title')?.toLowerCase() || '';
       if (!href) continue;
 
       const absoluteUrl = getAbsoluteUrl(href);
       if (!absoluteUrl) continue;
 
-      // Match common prev link patterns (IDs, text, titles, multilingual)
+      // Match common prev link patterns (IDs, rel, class, text, titles, multilingual)
       const isPrev = 
         id === 'prev_chap' || 
         id === 'prev-chap' || 
         id === 'prevchap' ||
         id === 'prev' ||
+        rel === 'prev' ||
+        rel === 'previous' ||
+        className.includes('btn-prev') ||
+        className.includes('prev-chap') ||
+        className.includes('chap-prev') ||
+        className.includes('nav-prev') ||
         title.includes('previous') ||
         title.includes('chương trước') ||
+        title.includes('chap trước') ||
+        ariaLabel.includes('prev') ||
+        ariaLabel.includes('trước') ||
         text === 'prev' ||
         text === 'previous' ||
         text === 'previous chapter' ||
@@ -262,38 +297,57 @@ export async function GET(request: NextRequest) {
         text === '‹ prev' ||
         text === '« prev' ||
         text.includes('prev chapter') ||
-        text === 'back' ||
         text.includes('chương trước') ||
         text.includes('chap trước') ||
+        text.includes('tập trước') ||
+        text === 'back' ||
         text === 'trước' ||
         text === '‹ trước' ||
         text === '« trước' ||
-        text === '< trước';
+        text === '< trước' ||
+        text === '‹' ||
+        text === '«' ||
+        text === '←';
 
-      // Match common next link patterns (IDs, text, titles, multilingual)
+      // Match common next link patterns (IDs, rel, class, text, titles, multilingual)
       const isNext = 
         id === 'next_chap' || 
         id === 'next-chap' || 
         id === 'nextchap' ||
         id === 'next' ||
+        rel === 'next' ||
+        className.includes('btn-next') ||
+        className.includes('next-chap') ||
+        className.includes('chap-next') ||
+        className.includes('nav-next') ||
         title.includes('next') ||
         title.includes('chương sau') ||
         title.includes('chương tiếp') ||
+        title.includes('chap sau') ||
+        title.includes('chap tiếp') ||
+        ariaLabel.includes('next') ||
+        ariaLabel.includes('tiếp') ||
         text === 'next' ||
         text === 'next chapter' ||
         text === 'next >' ||
         text === '› next' ||
         text === '» next' ||
         text.includes('next chapter') ||
-        text === 'forward' ||
         text.includes('chương sau') ||
         text.includes('chương tiếp') ||
         text.includes('chap sau') ||
         text.includes('chap tiếp') ||
+        text.includes('tập sau') ||
+        text.includes('tập tiếp') ||
+        text === 'forward' ||
         text === 'tiếp' ||
+        text === 'sau' ||
         text === 'tiếp ›' ||
         text === 'tiếp »' ||
-        text === 'tiếp >';
+        text === 'tiếp >' ||
+        text === '›' ||
+        text === '»' ||
+        text === '→';
 
       if (isPrev && !prevUrl) {
         prevUrl = absoluteUrl;
