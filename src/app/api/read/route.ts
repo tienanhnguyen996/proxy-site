@@ -33,6 +33,33 @@ function getNovelBaseUrl(chapterUrl: string): string {
   }
 }
 
+function inferPrevNextFromUrl(chapterUrl: string): { prevUrl: string | null; nextUrl: string | null } {
+  let inferredPrev: string | null = null;
+  let inferredNext: string | null = null;
+  try {
+    const urlObj = new URL(chapterUrl);
+    let path = urlObj.pathname;
+    const hasTrailingSlash = path.endsWith('/');
+    if (hasTrailingSlash) path = path.slice(0, -1);
+
+    const match = path.match(/^(.*\/[^\d]*)(\d+)$/);
+    if (match) {
+      const prefix = match[1];
+      const numStr = match[2];
+      const chapNum = parseInt(numStr, 10);
+      if (!isNaN(chapNum)) {
+        if (chapNum > 1) {
+          const prevNumStr = String(chapNum - 1).padStart(numStr.length, '0');
+          inferredPrev = urlObj.origin + prefix + prevNumStr + (hasTrailingSlash ? '/' : '');
+        }
+        const nextNumStr = String(chapNum + 1).padStart(numStr.length, '0');
+        inferredNext = urlObj.origin + prefix + nextNumStr + (hasTrailingSlash ? '/' : '');
+      }
+    }
+  } catch {}
+  return { prevUrl: inferredPrev, nextUrl: inferredNext };
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
@@ -161,6 +188,12 @@ export async function GET(request: NextRequest) {
         }
       } catch (libErr) {
         console.error('Failed to resolve library chapters on cache hit:', libErr);
+      }
+
+      if (!resolvedPrevUrl || !resolvedNextUrl) {
+        const inferred = inferPrevNextFromUrl(normalizedUrl);
+        if (!resolvedPrevUrl) resolvedPrevUrl = inferred.prevUrl;
+        if (!resolvedNextUrl) resolvedNextUrl = inferred.nextUrl;
       }
 
       return NextResponse.json({
@@ -510,8 +543,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const normalizedNextUrl = nextUrl ? normalizeUrl(nextUrl) : null;
-    const normalizedPrevUrl = prevUrl ? normalizeUrl(prevUrl) : null;
+    let normalizedNextUrl = nextUrl ? normalizeUrl(nextUrl) : null;
+    let normalizedPrevUrl = prevUrl ? normalizeUrl(prevUrl) : null;
+
+    if (!normalizedPrevUrl || !normalizedNextUrl) {
+      const inferred = inferPrevNextFromUrl(normalizedUrl);
+      if (!normalizedPrevUrl) normalizedPrevUrl = inferred.prevUrl;
+      if (!normalizedNextUrl) normalizedNextUrl = inferred.nextUrl;
+    }
 
     // Apply replace rules
     const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
