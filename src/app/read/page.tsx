@@ -140,13 +140,24 @@ function ReaderView() {
     ttsRateRef.current = ttsRate;
   }, [ttsRate]);
 
-  // Initialize TTS Voices (and add Natural HD Voice as default)
+  // Initialize TTS Voices (prioritizing HoaiMy / Microsoft / Vietnamese voices)
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     const updateVoices = () => {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
+
+      if (voices.length > 0 && selectedVoiceURI === 'natural_hd') {
+        const hoaiMyVoice = voices.find(v => 
+          v.name.toLowerCase().includes('hoaimy') || 
+          v.name.toLowerCase().includes('hoài my') ||
+          (v.lang.toLowerCase().includes('vi') && (v.name.toLowerCase().includes('microsoft') || v.name.toLowerCase().includes('neural')))
+        );
+        if (hoaiMyVoice) {
+          setSelectedVoiceURI(hoaiMyVoice.voiceURI);
+        }
+      }
     };
 
     updateVoices();
@@ -156,7 +167,7 @@ function ReaderView() {
         window.speechSynthesis.onvoiceschanged = null;
       }
     };
-  }, []);
+  }, [selectedVoiceURI]);
 
   // Stop audio on unmount or chapter change
   const stopAllAudio = () => {
@@ -192,13 +203,12 @@ function ReaderView() {
     return () => clearTimeout(timer);
   }, [data, mode, translations]);
 
-  // Highlight paragraph helper
+  // Highlight paragraph helper (NO auto-scroll)
   const highlightParagraph = (index: number | null) => {
     const paras = getParagraphElements();
     paras.forEach((p, idx) => {
       if (idx === index) {
         p.classList.add('tts-reading-active');
-        p.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else {
         p.classList.remove('tts-reading-active');
       }
@@ -1776,21 +1786,21 @@ function ReaderView() {
           {/* Speed Selector */}
           <select
             className="audio-select"
-            value={ttsRate}
+            value={String(ttsRate)}
             onChange={(e) => handleRateChange(parseFloat(e.target.value))}
             title="Speech Speed"
           >
             <option value="0.8">0.8x</option>
-            <option value="1.0">1.0x</option>
-            <option value="1.2">1.2x</option>
+            <option value="1">1.0x</option>
+            <option value="1.25">1.25x</option>
             <option value="1.5">1.5x</option>
-            <option value="2.0">2.0x</option>
+            <option value="2">2.0x</option>
           </select>
 
           {/* Voice Selector */}
           <select
             className="audio-select"
-            style={{ maxWidth: '140px', textOverflow: 'ellipsis' }}
+            style={{ maxWidth: '160px', textOverflow: 'ellipsis' }}
             value={selectedVoiceURI}
             onChange={(e) => {
               const newVoice = e.target.value;
@@ -1805,12 +1815,17 @@ function ReaderView() {
             }}
             title="Select Voice Engine"
           >
-            <option value="natural_hd">✨ Natural HD Voice (VI)</option>
-            {availableVoices.map((v) => (
-              <option key={v.voiceURI} value={v.voiceURI}>
-                🌐 {v.name} ({v.lang})
-              </option>
-            ))}
+            {availableVoices.map((v) => {
+              const isHoaiMy = v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my');
+              const isVi = v.lang.toLowerCase().includes('vi');
+              const label = isHoaiMy ? `⭐ ${v.name}` : isVi ? `🇻🇳 ${v.name}` : `🌐 ${v.name}`;
+              return (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {label}
+                </option>
+              );
+            })}
+            <option value="natural_hd">✨ Google AI Voice (VI)</option>
           </select>
 
           {/* Auto Next Chapter Toggle */}
