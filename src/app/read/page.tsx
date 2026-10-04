@@ -124,31 +124,29 @@ function ReaderView() {
     return 1;
   });
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('');
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('natural_hd');
   const [autoNextChapter, setAutoNextChapter] = useState<boolean>(true);
 
-  // Refs to track progress and DOM content
+  // Refs to track progress, audio elements, and live rate
   const lastSavedUrlRef = useRef<string>('');
   const lastSavedProgressRef = useRef<number>(0);
   const readerContentRef = useRef<HTMLDivElement>(null);
-  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const ttsRateRef = useRef<number>(1);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentSentenceIdxRef = useRef<number>(0);
 
-  // Initialize TTS Voices (prioritizing Vietnamese vi-VN / vi)
+  // Keep ttsRateRef updated
+  useEffect(() => {
+    ttsRateRef.current = ttsRate;
+  }, [ttsRate]);
+
+  // Initialize TTS Voices (and add Natural HD Voice as default)
   useEffect(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     const updateVoices = () => {
       const voices = window.speechSynthesis.getVoices();
       setAvailableVoices(voices);
-
-      if (voices.length > 0 && !selectedVoiceURI) {
-        const viVoice = voices.find(v => v.lang.toLowerCase().includes('vi'));
-        if (viVoice) {
-          setSelectedVoiceURI(viVoice.voiceURI);
-        } else {
-          setSelectedVoiceURI(voices[0].voiceURI);
-        }
-      }
     };
 
     updateVoices();
@@ -158,14 +156,22 @@ function ReaderView() {
         window.speechSynthesis.onvoiceschanged = null;
       }
     };
-  }, [selectedVoiceURI]);
+  }, []);
 
-  // Clean up speech synthesis when component unmounts or targetUrl changes
+  // Stop audio on unmount or chapter change
+  const stopAllAudio = () => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  };
+
   useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopAllAudio();
     };
   }, [targetUrl]);
 
@@ -199,8 +205,88 @@ function ReaderView() {
     });
   };
 
-  // Speak paragraph at specific index
-  const speakParagraphAtIndex = (index: number) => {
+  // Sentence splitting helper for Natural HD Voice
+  const splitTextIntoSentences = (text: string): string[] => {
+    const raw = text.split(/(?<=[.?!;\n])\s+/);
+    const result: string[] = [];
+    let buffer = '';
+
+    for (const chunk of raw) {
+      if ((buffer + ' ' + chunk).length < 180) {
+        buffer = buffer ? buffer + ' ' + chunk : chunk;
+      } else {
+        if (buffer) result.push(buffer);
+        if (chunk.length > 180) {
+          const subChunks = chunk.match(/.{1,180}(\s+|$)/g) || [chunk];
+          result.push(...subChunks);
+          buffer = '';
+        } else {
+          buffer = chunk;
+        }
+      }
+    }
+    if (buffer) result.push(buffer);
+    return result.filter(s => s.trim().length > 0);
+  };
+
+  // Natural HD Voice player (HTML5 Audio proxy)
+  const speakParagraphNatural = (paraIdx: number, sentenceIdx: number = 0) => {
+    const paras = getParagraphElements();
+    if (paraIdx < 0 || paraIdx >= paras.length) {
+      highlightParagraph(null);
+      setTtsSpeaking(false);
+      setTtsPaused(false);
+      setCurrentParaIndex(null);
+      if (autoNextChapter && effectiveNextUrl) {
+        handleChapterChange(effectiveNextUrl);
+      }
+      return;
+    }
+
+    stopAllAudio();
+    setCurrentParaIndex(paraIdx);
+    currentSentenceIdxRef.current = sentenceIdx;
+    setTtsActive(true);
+    setTtsSpeaking(true);
+    setTtsPaused(false);
+    highlightParagraph(paraIdx);
+
+    const paraElement = paras[paraIdx];
+    const text = (paraElement.textContent || '').trim();
+    if (!text) {
+      speakParagraphNatural(paraIdx + 1, 0);
+      return;
+    }
+
+    const sentences = splitTextIntoSentences(text);
+    if (sentenceIdx >= sentences.length) {
+      speakParagraphNatural(paraIdx + 1, 0);
+      return;
+    }
+
+    const currentSentence = sentences[sentenceIdx];
+    const audioUrl = `/api/tts?lang=vi&text=${encodeURIComponent(currentSentence)}`;
+    const audio = new Audio(audioUrl);
+    audio.playbackRate = ttsRateRef.current;
+    currentAudioRef.current = audio;
+
+    audio.onended = () => {
+      speakParagraphNatural(paraIdx, sentenceIdx + 1);
+    };
+
+    audio.onerror = (err) => {
+      console.error('Audio playback error, trying next sentence:', err);
+      speakParagraphNatural(paraIdx, sentenceIdx + 1);
+    };
+
+    audio.play().catch(err => {
+      console.error('Audio play blocked or failed:', err);
+      speakParagraphNatural(paraIdx, sentenceIdx + 1);
+    });
+  };
+
+  // System Web Speech player
+  const speakParagraphSystem = (index: number) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       alert('Text-to-Speech is not supported in this browser.');
       return;
@@ -212,15 +298,13 @@ function ReaderView() {
       setTtsSpeaking(false);
       setTtsPaused(false);
       setCurrentParaIndex(null);
-
-      // Auto next chapter if enabled
       if (autoNextChapter && effectiveNextUrl) {
         handleChapterChange(effectiveNextUrl);
       }
       return;
     }
 
-    window.speechSynthesis.cancel();
+    stopAllAudio();
     setCurrentParaIndex(index);
     setTtsActive(true);
     setTtsSpeaking(true);
@@ -231,33 +315,38 @@ function ReaderView() {
     const textToRead = (paraElement.textContent || '').trim();
 
     if (!textToRead) {
-      speakParagraphAtIndex(index + 1);
+      speakParagraphSystem(index + 1);
       return;
     }
 
     const utterance = new SpeechSynthesisUtterance(textToRead);
     utterance.lang = 'vi-VN';
-    utterance.rate = ttsRate;
+    utterance.rate = ttsRateRef.current;
 
-    if (selectedVoiceURI) {
+    if (selectedVoiceURI && selectedVoiceURI !== 'natural_hd') {
       const voiceObj = availableVoices.find(v => v.voiceURI === selectedVoiceURI);
       if (voiceObj) utterance.voice = voiceObj;
-    } else {
-      const viVoice = availableVoices.find(v => v.lang.toLowerCase().includes('vi'));
-      if (viVoice) utterance.voice = viVoice;
     }
 
     utterance.onend = () => {
-      speakParagraphAtIndex(index + 1);
+      speakParagraphSystem(index + 1);
     };
 
     utterance.onerror = (err) => {
       console.error('Speech synthesis error:', err);
-      speakParagraphAtIndex(index + 1);
+      speakParagraphSystem(index + 1);
     };
 
-    currentUtteranceRef.current = utterance;
     window.speechSynthesis.speak(utterance);
+  };
+
+  // Main speech dispatcher
+  const speakParagraphAtIndex = (index: number) => {
+    if (selectedVoiceURI === 'natural_hd') {
+      speakParagraphNatural(index, 0);
+    } else {
+      speakParagraphSystem(index);
+    }
   };
 
   // Click on reader content handler to start reading from clicked paragraph
@@ -274,11 +363,27 @@ function ReaderView() {
   };
 
   const togglePlayPauseTts = () => {
+    if (selectedVoiceURI === 'natural_hd') {
+      if (currentAudioRef.current) {
+        if (ttsSpeaking && !ttsPaused) {
+          currentAudioRef.current.pause();
+          setTtsPaused(true);
+        } else if (ttsPaused) {
+          currentAudioRef.current.play();
+          setTtsPaused(false);
+        }
+      } else {
+        const startIndex = currentParaIndex !== null ? currentParaIndex : 0;
+        speakParagraphNatural(startIndex, 0);
+      }
+      return;
+    }
+
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     if (!ttsSpeaking && !ttsPaused) {
       const startIndex = currentParaIndex !== null ? currentParaIndex : 0;
-      speakParagraphAtIndex(startIndex);
+      speakParagraphSystem(startIndex);
     } else if (ttsSpeaking && !ttsPaused) {
       window.speechSynthesis.pause();
       setTtsPaused(true);
@@ -289,8 +394,7 @@ function ReaderView() {
   };
 
   const stopTts = () => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
+    stopAllAudio();
     setTtsSpeaking(false);
     setTtsPaused(false);
     setTtsActive(false);
@@ -308,9 +412,17 @@ function ReaderView() {
 
   const handleRateChange = (newRate: number) => {
     setTtsRate(newRate);
+    ttsRateRef.current = newRate;
     localStorage.setItem('aetherread_ttsRate', String(newRate));
-    if (ttsSpeaking && currentParaIndex !== null) {
-      speakParagraphAtIndex(currentParaIndex);
+
+    // Update HTML5 audio playbackRate instantly on the fly
+    if (currentAudioRef.current) {
+      currentAudioRef.current.playbackRate = newRate;
+    }
+
+    // Re-start system Web Speech if currently active
+    if (selectedVoiceURI !== 'natural_hd' && ttsSpeaking && currentParaIndex !== null) {
+      speakParagraphSystem(currentParaIndex);
     }
   };
 
@@ -1676,26 +1788,30 @@ function ReaderView() {
           </select>
 
           {/* Voice Selector */}
-          {availableVoices.length > 0 && (
-            <select
-              className="audio-select"
-              style={{ maxWidth: '130px', textOverflow: 'ellipsis' }}
-              value={selectedVoiceURI}
-              onChange={(e) => {
-                setSelectedVoiceURI(e.target.value);
-                if (ttsSpeaking && currentParaIndex !== null) {
-                  speakParagraphAtIndex(currentParaIndex);
+          <select
+            className="audio-select"
+            style={{ maxWidth: '140px', textOverflow: 'ellipsis' }}
+            value={selectedVoiceURI}
+            onChange={(e) => {
+              const newVoice = e.target.value;
+              setSelectedVoiceURI(newVoice);
+              if (ttsSpeaking && currentParaIndex !== null) {
+                if (newVoice === 'natural_hd') {
+                  speakParagraphNatural(currentParaIndex, 0);
+                } else {
+                  speakParagraphSystem(currentParaIndex);
                 }
-              }}
-              title="Select Voice"
-            >
-              {availableVoices.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>
-                  {v.name} ({v.lang})
-                </option>
-              ))}
-            </select>
-          )}
+              }
+            }}
+            title="Select Voice Engine"
+          >
+            <option value="natural_hd">✨ Natural HD Voice (VI)</option>
+            {availableVoices.map((v) => (
+              <option key={v.voiceURI} value={v.voiceURI}>
+                🌐 {v.name} ({v.lang})
+              </option>
+            ))}
+          </select>
 
           {/* Auto Next Chapter Toggle */}
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--meta-fg)' }} title="Automatically read next chapter when current chapter ends">
