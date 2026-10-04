@@ -566,3 +566,122 @@ a:hover {
   }
 }
 
+/* TTS Audio Book & Paragraph Click-to-Read Styling */
+.reader-content p {
+  position: relative;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  padding-left: 10px;
+  border-radius: 4px;
+  transition: border-color 0.2s ease, background-color 0.2s ease, padding 0.2s ease;
+}
+
+.reader-content p:hover {
+  border-left-color: var(--accent-soft);
+  background-color: var(--accent-soft);
+}
+
+.reader-content p.tts-reading-active {
+  border-left-color: var(--accent);
+  background-color: var(--accent-soft);
+  box-shadow: 0 0 0 1px var(--accent-soft);
+  padding-left: 12px;
+}
+
+/* Floating Audio Player Control Bar */
+.audio-player-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+  border-radius: 16px;
+  padding: 0.6rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  max-width: 90vw;
+  width: max-content;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.audio-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.audio-btn {
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.audio-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.audio-btn-primary {
+  background: var(--accent);
+  color: #ffffff !important;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 1.2rem;
+  box-shadow: 0 4px 12px var(--accent-soft);
+}
+
+.audio-btn-primary:hover {
+  background: var(--accent-hover);
+  transform: scale(1.05);
+}
+
+.audio-select {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+}
+
+.audio-select:focus {
+  border-color: var(--accent);
+}
+
+.audio-info {
+  font-size: 0.75rem;
+  color: var(--meta-fg);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .audio-player-bar {
+    bottom: 12px;
+    padding: 0.4rem 0.75rem;
+    gap: 0.4rem;
+    border-radius: 12px;
+  }
+  .audio-info {
+    display: none;
+  }
+}
+
+

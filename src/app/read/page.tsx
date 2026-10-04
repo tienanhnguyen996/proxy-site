@@ -111,9 +111,208 @@ function ReaderView() {
   const [chapters, setChapters] = useState<{ title: string; url: string }[]>([]);
   const [scrollProgress, setScrollProgress] = useState(0);
 
-  // Refs to track progress and prevent redundant saves
+  // TTS Audio Book State
+  const [ttsActive, setTtsActive] = useState(false);
+  const [ttsSpeaking, setTtsSpeaking] = useState(false);
+  const [ttsPaused, setTtsPaused] = useState(false);
+  const [currentParaIndex, setCurrentParaIndex] = useState<number | null>(null);
+  const [totalParagraphs, setTotalParagraphs] = useState<number>(0);
+  const [ttsRate, setTtsRate] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return parseFloat(localStorage.getItem('aetherread_ttsRate') || '1');
+    }
+    return 1;
+  });
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('');
+  const [autoNextChapter, setAutoNextChapter] = useState<boolean>(true);
+
+  // Refs to track progress and DOM content
   const lastSavedUrlRef = useRef<string>('');
   const lastSavedProgressRef = useRef<number>(0);
+  const readerContentRef = useRef<HTMLDivElement>(null);
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Initialize TTS Voices (prioritizing Vietnamese vi-VN / vi)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const updateVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      setAvailableVoices(voices);
+
+      if (voices.length > 0 && !selectedVoiceURI) {
+        const viVoice = voices.find(v => v.lang.toLowerCase().includes('vi'));
+        if (viVoice) {
+          setSelectedVoiceURI(viVoice.voiceURI);
+        } else {
+          setSelectedVoiceURI(voices[0].voiceURI);
+        }
+      }
+    };
+
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, [selectedVoiceURI]);
+
+  // Clean up speech synthesis when component unmounts or targetUrl changes
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [targetUrl]);
+
+  // Helper to extract paragraphs from reader DOM container
+  const getParagraphElements = (): HTMLParagraphElement[] => {
+    if (!readerContentRef.current) return [];
+    const elements = Array.from(readerContentRef.current.querySelectorAll('p, div > p, article > p'));
+    return elements.filter(el => (el.textContent || '').trim().length > 0) as HTMLParagraphElement[];
+  };
+
+  // Update total paragraph count when content changes
+  useEffect(() => {
+    if (!data) return;
+    const timer = setTimeout(() => {
+      const paras = getParagraphElements();
+      setTotalParagraphs(paras.length);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [data, mode, translations]);
+
+  // Highlight paragraph helper
+  const highlightParagraph = (index: number | null) => {
+    const paras = getParagraphElements();
+    paras.forEach((p, idx) => {
+      if (idx === index) {
+        p.classList.add('tts-reading-active');
+        p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        p.classList.remove('tts-reading-active');
+      }
+    });
+  };
+
+  // Speak paragraph at specific index
+  const speakParagraphAtIndex = (index: number) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('Text-to-Speech is not supported in this browser.');
+      return;
+    }
+
+    const paras = getParagraphElements();
+    if (index < 0 || index >= paras.length) {
+      highlightParagraph(null);
+      setTtsSpeaking(false);
+      setTtsPaused(false);
+      setCurrentParaIndex(null);
+
+      // Auto next chapter if enabled
+      if (autoNextChapter && effectiveNextUrl) {
+        handleChapterChange(effectiveNextUrl);
+      }
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    setCurrentParaIndex(index);
+    setTtsActive(true);
+    setTtsSpeaking(true);
+    setTtsPaused(false);
+    highlightParagraph(index);
+
+    const paraElement = paras[index];
+    const textToRead = (paraElement.textContent || '').trim();
+
+    if (!textToRead) {
+      speakParagraphAtIndex(index + 1);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(textToRead);
+    utterance.lang = 'vi-VN';
+    utterance.rate = ttsRate;
+
+    if (selectedVoiceURI) {
+      const voiceObj = availableVoices.find(v => v.voiceURI === selectedVoiceURI);
+      if (voiceObj) utterance.voice = voiceObj;
+    } else {
+      const viVoice = availableVoices.find(v => v.lang.toLowerCase().includes('vi'));
+      if (viVoice) utterance.voice = viVoice;
+    }
+
+    utterance.onend = () => {
+      speakParagraphAtIndex(index + 1);
+    };
+
+    utterance.onerror = (err) => {
+      console.error('Speech synthesis error:', err);
+      speakParagraphAtIndex(index + 1);
+    };
+
+    currentUtteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // Click on reader content handler to start reading from clicked paragraph
+  const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const clickedP = target.closest('p');
+    if (!clickedP || !readerContentRef.current) return;
+
+    const paras = getParagraphElements();
+    const index = paras.indexOf(clickedP as HTMLParagraphElement);
+    if (index !== -1) {
+      speakParagraphAtIndex(index);
+    }
+  };
+
+  const togglePlayPauseTts = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    if (!ttsSpeaking && !ttsPaused) {
+      const startIndex = currentParaIndex !== null ? currentParaIndex : 0;
+      speakParagraphAtIndex(startIndex);
+    } else if (ttsSpeaking && !ttsPaused) {
+      window.speechSynthesis.pause();
+      setTtsPaused(true);
+    } else if (ttsPaused) {
+      window.speechSynthesis.resume();
+      setTtsPaused(false);
+    }
+  };
+
+  const stopTts = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    setTtsSpeaking(false);
+    setTtsPaused(false);
+    setTtsActive(false);
+    highlightParagraph(null);
+    setCurrentParaIndex(null);
+  };
+
+  const skipTtsParagraph = (delta: number) => {
+    const nextIdx = (currentParaIndex !== null ? currentParaIndex : 0) + delta;
+    const paras = getParagraphElements();
+    if (nextIdx >= 0 && nextIdx < paras.length) {
+      speakParagraphAtIndex(nextIdx);
+    }
+  };
+
+  const handleRateChange = (newRate: number) => {
+    setTtsRate(newRate);
+    localStorage.setItem('aetherread_ttsRate', String(newRate));
+    if (ttsSpeaking && currentParaIndex !== null) {
+      speakParagraphAtIndex(currentParaIndex);
+    }
+  };
 
   const handleChapterChange = (url: string) => {
     if (url) {
@@ -898,6 +1097,20 @@ function ReaderView() {
             </div>
           )}
           <div className="header-actions">
+            <button 
+              className={`btn ${ttsActive ? 'btn-primary' : ''}`}
+              onClick={() => {
+                if (!ttsActive) {
+                  setTtsActive(true);
+                  speakParagraphAtIndex(currentParaIndex !== null ? currentParaIndex : 0);
+                } else {
+                  togglePlayPauseTts();
+                }
+              }}
+              title="Audio Book Text-to-Speech"
+            >
+              🎧 <span className="btn-text-hide-mobile">{ttsSpeaking && !ttsPaused ? 'Reading…' : 'Audio'}</span>
+            </button>
             {!isSaved ? (
               <button className="btn btn-primary btn-save" onClick={handleSaveToLibrary} disabled={saving}>
                 {saving ? 'Saving...' : <>❤ <span className="btn-text-hide-mobile">Save</span></>}
@@ -1346,6 +1559,8 @@ function ReaderView() {
 
           {/* Extracted story content */}
           <div 
+            ref={readerContentRef}
+            onClick={handleContentClick}
             className={`reader-content ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'font-be-vietnam' ? 'font-be-vietnam' : fontFamily === 'font-literata' ? 'font-literata' : fontFamily === 'serif-lora' ? 'font-serif-lora' : ''}`}
             style={{ 
               fontSize: `${fontSizePx}px`, 
@@ -1425,6 +1640,81 @@ function ReaderView() {
           </div>
         </article>
       </main>
+
+      {/* Floating Audio Player Control Bar */}
+      {ttsActive && (
+        <div className="audio-player-bar">
+          <div className="audio-player-controls">
+            <button className="audio-btn" onClick={() => skipTtsParagraph(-1)} title="Previous Paragraph (⏮)">
+              ⏮
+            </button>
+            <button className="audio-btn audio-btn-primary" onClick={togglePlayPauseTts} title={ttsSpeaking && !ttsPaused ? 'Pause' : 'Play'}>
+              {ttsSpeaking && !ttsPaused ? '⏸' : '▶'}
+            </button>
+            <button className="audio-btn" onClick={() => skipTtsParagraph(1)} title="Next Paragraph (⏭)">
+              ⏭
+            </button>
+            <button className="audio-btn" onClick={stopTts} title="Stop Audio (⏹)" style={{ color: '#ef4444' }}>
+              ⏹
+            </button>
+          </div>
+
+          <div style={{ height: '20px', width: '1px', background: 'var(--border)', margin: '0 0.2rem' }}></div>
+
+          {/* Speed Selector */}
+          <select
+            className="audio-select"
+            value={ttsRate}
+            onChange={(e) => handleRateChange(parseFloat(e.target.value))}
+            title="Speech Speed"
+          >
+            <option value="0.8">0.8x</option>
+            <option value="1.0">1.0x</option>
+            <option value="1.2">1.2x</option>
+            <option value="1.5">1.5x</option>
+            <option value="2.0">2.0x</option>
+          </select>
+
+          {/* Voice Selector */}
+          {availableVoices.length > 0 && (
+            <select
+              className="audio-select"
+              style={{ maxWidth: '130px', textOverflow: 'ellipsis' }}
+              value={selectedVoiceURI}
+              onChange={(e) => {
+                setSelectedVoiceURI(e.target.value);
+                if (ttsSpeaking && currentParaIndex !== null) {
+                  speakParagraphAtIndex(currentParaIndex);
+                }
+              }}
+              title="Select Voice"
+            >
+              {availableVoices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Auto Next Chapter Toggle */}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', color: 'var(--meta-fg)' }} title="Automatically read next chapter when current chapter ends">
+            <input
+              type="checkbox"
+              checked={autoNextChapter}
+              onChange={(e) => setAutoNextChapter(e.target.checked)}
+            />
+            <span className="audio-info">Auto Next</span>
+          </label>
+
+          {/* Progress Indicator */}
+          {currentParaIndex !== null && totalParagraphs > 0 && (
+            <span className="audio-info" style={{ marginLeft: '4px' }}>
+              {currentParaIndex + 1}/{totalParagraphs}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
