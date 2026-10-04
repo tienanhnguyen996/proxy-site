@@ -569,17 +569,13 @@ a:hover {
 /* TTS Audio Book & Paragraph Reader Styling */
 .reader-content p {
   position: relative;
-  border-left: 3px solid transparent;
-  padding-left: 10px;
   border-radius: 4px;
-  transition: border-color 0.2s ease, background-color 0.2s ease, padding 0.2s ease;
 }
 
 .reader-content p.tts-reading-active {
-  border-left-color: var(--accent);
   background-color: var(--accent-soft);
-  box-shadow: 0 0 0 1px var(--accent-soft);
-  padding-left: 12px;
+  border-left: 3px solid var(--accent);
+  padding-left: 8px;
 }
 
 /* Floating Audio Player Control Bar */
