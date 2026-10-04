@@ -359,17 +359,55 @@ function ReaderView() {
     }
   };
 
-  // Click on reader content handler to start reading from clicked paragraph
-  const handleContentClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Long-press gesture handlers (Press and Hold 400ms without dragging to start audio)
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button && e.button !== 0) return;
+
     const target = e.target as HTMLElement;
     const clickedP = target.closest('p');
     if (!clickedP || !readerContentRef.current) return;
 
-    const paras = getParagraphElements();
-    const index = paras.indexOf(clickedP as HTMLParagraphElement);
-    if (index !== -1) {
-      speakParagraphAtIndex(index);
+    touchStartPosRef.current = { x: e.clientX, y: e.clientY };
+
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
     }
+
+    longPressTimerRef.current = setTimeout(() => {
+      const paras = getParagraphElements();
+      const index = paras.indexOf(clickedP as HTMLParagraphElement);
+      if (index !== -1) {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try { navigator.vibrate(40); } catch {}
+        }
+        speakParagraphAtIndex(index);
+      }
+      longPressTimerRef.current = null;
+    }, 400);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!touchStartPosRef.current || !longPressTimerRef.current) return;
+
+    const dx = Math.abs(e.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(e.clientY - touchStartPosRef.current.y);
+
+    // Cancel long-press if user moves finger/mouse (scrolling)
+    if (dx > 8 || dy > 8) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const handlePointerUpOrCancel = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    touchStartPosRef.current = null;
   };
 
   const togglePlayPauseTts = () => {
@@ -1682,7 +1720,10 @@ function ReaderView() {
           {/* Extracted story content */}
           <div 
             ref={readerContentRef}
-            onClick={handleContentClick}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUpOrCancel}
+            onPointerCancel={handlePointerUpOrCancel}
             className={`reader-content ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'font-be-vietnam' ? 'font-be-vietnam' : fontFamily === 'font-literata' ? 'font-literata' : fontFamily === 'serif-lora' ? 'font-serif-lora' : ''}`}
             style={{ 
               fontSize: `${fontSizePx}px`, 
