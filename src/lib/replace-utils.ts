@@ -192,11 +192,6 @@ function replaceIgnoringAccents(
 
   const results: string[] = [];
   let searchIndex = 0;
-  let searchPos = 0;
-
-  // We need to search in the normalized content but slice from the original content.
-  // Build an index that maps normalized char positions to original content char positions.
-  const normalizedChars = normContent.split('');
 
   let lastIdx = 0;
   const lowerFind = normFind;

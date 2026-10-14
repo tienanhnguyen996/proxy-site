@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { getChapter, getBook, getLocalRulesForChapter, putBook, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalBook, type LocalRule } from '@/lib/localdb';
+import { getChapter, getBook, getLocalRulesForChapter, putBook, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalRule } from '@/lib/localdb';
 import { applyTextRules } from '@/lib/replace-utils';
+
+import { getNovelBaseUrl } from '@/lib/novel-utils';
 
 interface ArticleData {
   title: string;
@@ -16,34 +18,7 @@ interface ArticleData {
   chapters?: { title: string; url: string }[];
   originalFont?: string | null;
   hasTranslation?: boolean;
-}
-
-function getNovelBaseUrl(chapterUrl: string): string {
-  // Handle local:// URLs for uploaded books
-  if (chapterUrl.startsWith('local://')) {
-    const match = chapterUrl.match(/^(local:\/\/[a-f0-9]+)/);
-    return match ? match[1] : chapterUrl.split('/').slice(0, 2).join('/');
-  }
-
-  try {
-    const url = new URL(chapterUrl);
-    if (url.hostname.includes('royalroad.com')) {
-      const match = url.pathname.match(/^\/fiction\/(\d+)\/([^/]+)/);
-      if (match) {
-        return `${url.origin}/fiction/${match[1]}/${match[2]}`;
-      }
-    }
-    const paths = url.pathname.split('/').filter(Boolean);
-    if (paths.length > 1) {
-      const last = paths[paths.length - 1];
-      if (last.includes('chuong') || last.includes('chapter') || last.includes('chap') || !isNaN(Number(last))) {
-        return `${url.origin}/${paths.slice(0, -1).join('/')}/`;
-      }
-    }
-    return `${url.origin}/${paths.join('/')}/`;
-  } catch {
-    return chapterUrl;
-  }
+  isManga?: boolean;
 }
 
 function ReaderView() {
@@ -365,6 +340,7 @@ function ReaderView() {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button && e.button !== 0) return;
+    if (data?.isManga) return;
 
     const target = e.target as HTMLElement;
     const clickedP = target.closest('p');
@@ -1257,20 +1233,38 @@ function ReaderView() {
             </div>
           )}
           <div className="header-actions">
-            <button 
-              className={`btn ${ttsActive ? 'btn-primary' : ''}`}
-              onClick={() => {
-                if (!ttsActive) {
-                  setTtsActive(true);
-                  speakParagraphAtIndex(currentParaIndex !== null ? currentParaIndex : 0);
-                } else {
-                  togglePlayPauseTts();
-                }
-              }}
-              title="Audio Book Text-to-Speech"
-            >
-              🎧 <span className="btn-text-hide-mobile">{ttsSpeaking && !ttsPaused ? 'Reading…' : 'Audio'}</span>
-            </button>
+            {!data.isManga ? (
+              <button 
+                className={`btn ${ttsActive ? 'btn-primary' : ''}`}
+                onClick={() => {
+                  if (!ttsActive) {
+                    setTtsActive(true);
+                    speakParagraphAtIndex(currentParaIndex !== null ? currentParaIndex : 0);
+                  } else {
+                    togglePlayPauseTts();
+                  }
+                }}
+                title="Audio Book Text-to-Speech"
+              >
+                🎧 <span className="btn-text-hide-mobile">{ttsSpeaking && !ttsPaused ? 'Reading…' : 'Audio'}</span>
+              </button>
+            ) : (
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  background: 'rgba(236, 72, 153, 0.12)',
+                  color: '#ec4899',
+                  padding: '0.4rem 0.75rem',
+                  borderRadius: '20px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem'
+                }}
+              >
+                🎨 <span className="btn-text-hide-mobile">Manga</span>
+              </span>
+            )}
             {!isSaved ? (
               <button className="btn btn-primary btn-save" onClick={handleSaveToLibrary} disabled={saving}>
                 {saving ? 'Saving...' : <>❤ <span className="btn-text-hide-mobile">Save</span></>}
@@ -1697,12 +1691,15 @@ function ReaderView() {
       <main style={{ flex: 1 }}>
         <article 
           className="reader-container" 
-          style={{ maxWidth: readerWidths[readerWidth] }}
+          style={{ maxWidth: data.isManga ? (readerWidth === 'narrow' ? '760px' : readerWidth === 'normal' ? '980px' : '1180px') : readerWidths[readerWidth] }}
         >
           {/* Header metadata */}
           <div className="reader-header">
             <div className="reader-meta">
               {data.siteName}{' '}
+              {data.isManga && (
+                <span style={{ marginLeft: '8px', padding: '2px 8px', background: 'rgba(236, 72, 153, 0.12)', color: '#ec4899', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 700 }}>Manga</span>
+              )}
               {isShowingTranslation ? (
                 <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--accent-soft)', color: 'var(--accent)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>✨ AI Translated</span>
               ) : mode === 'translated' ? (
@@ -1724,7 +1721,7 @@ function ReaderView() {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUpOrCancel}
             onPointerCancel={handlePointerUpOrCancel}
-            className={`reader-content ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'font-be-vietnam' ? 'font-be-vietnam' : fontFamily === 'font-literata' ? 'font-literata' : fontFamily === 'serif-lora' ? 'font-serif-lora' : ''}`}
+            className={`reader-content ${data.isManga ? 'reader-content-manga' : ''} ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'font-be-vietnam' ? 'font-be-vietnam' : fontFamily === 'font-literata' ? 'font-literata' : fontFamily === 'serif-lora' ? 'font-serif-lora' : ''}`}
             style={{ 
               fontSize: `${fontSizePx}px`, 
               lineHeight: lineHeights[lineHeight],

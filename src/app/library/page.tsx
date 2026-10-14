@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getAllBooks,
-  getBook,
   putBook,
   deleteBook as deleteLocalBook,
   putChapters,
@@ -12,8 +11,7 @@ import {
   type LocalChapter,
 } from '@/lib/localdb';
 import { detectChapters, splitIntoBatches, textToHtml } from '@/lib/chapters-client';
-import { applyTextRules } from '@/lib/replace-utils';
-import { getLocalRulesForChapter, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalRule } from '@/lib/localdb';
+import { getNovelBaseUrl, normalizeUrl } from '@/lib/novel-utils';
 
 interface LibraryBook {
   id: string;
@@ -116,24 +114,7 @@ export default function LibraryPage() {
       }
 
       // Infer novel base URL
-      let novelUrl = inputUrl.trim();
-      try {
-        const urlObj = new URL(inputUrl.trim());
-        if (urlObj.hostname.includes('royalroad.com')) {
-          const match = urlObj.pathname.match(/^\/fiction\/(\d+)\/([^/]+)/);
-          if (match) {
-            novelUrl = `${urlObj.origin}/fiction/${match[1]}/${match[2]}`;
-          }
-        } else {
-          const paths = urlObj.pathname.split('/').filter(Boolean);
-          if (paths.length > 1) {
-            const last = paths[paths.length - 1];
-            if (last.includes('chuong') || last.includes('chapter') || last.includes('chap') || !isNaN(Number(last))) {
-              novelUrl = `${urlObj.origin}/${paths.slice(0, -1).join('/')}/`;
-            }
-          }
-        }
-      } catch {}
+      const novelUrl = normalizeUrl(getNovelBaseUrl(inputUrl.trim()));
 
       // Infer title (remove chapter suffix if possible)
       let novelTitle = scrapeData.siteName || 'New Novel';
@@ -363,7 +344,7 @@ export default function LibraryPage() {
               <input
                 type="url"
                 className="input"
-                placeholder="Paste any chapter URL (e.g. https://truyenfull.live/truyen-slug/chuong-1/)"
+                placeholder="Paste novel or manga chapter URL (e.g. truyenqq, truyenfull...)"
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
                 disabled={importing}
@@ -513,18 +494,32 @@ export default function LibraryPage() {
                     </button>
 
                     <div>
-                      {/* Source badge */}
-                      <span style={{ 
-                        fontSize: '0.7rem', 
-                        color: 'var(--meta-fg)', 
-                        textTransform: 'uppercase', 
-                        fontWeight: 700, 
-                        letterSpacing: '0.05em',
-                        display: 'block',
-                        marginBottom: '0.5rem'
-                      }}>
-                        {book.site_name}
-                      </span>
+                      {/* Source badge & Manga tag */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <span style={{ 
+                          fontSize: '0.7rem', 
+                          color: 'var(--meta-fg)', 
+                          textTransform: 'uppercase', 
+                          fontWeight: 700, 
+                          letterSpacing: '0.05em',
+                          display: 'block'
+                        }}>
+                          {book.site_name}
+                        </span>
+                        {(book.novel_url.includes('truyen-tranh') || book.site_name?.toLowerCase().includes('truyenqq')) && (
+                          <span style={{
+                            fontSize: '0.65rem',
+                            fontWeight: 700,
+                            background: 'rgba(236, 72, 153, 0.1)',
+                            color: '#ec4899',
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '4px',
+                            textTransform: 'uppercase'
+                          }}>
+                            Manga
+                          </span>
+                        )}
+                      </div>
                       
                       {/* Novel Title */}
                       <h3 style={{ 

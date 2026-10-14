@@ -1,63 +1,94 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
-import { getUrlId, normalizeUrl } from '@/lib/utils';
+import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
 
-
-function getNovelBaseUrl(chapterUrl: string): string {
-  // Handle local:// URLs for uploaded books
-  if (chapterUrl.startsWith('local://')) {
-    const match = chapterUrl.match(/^(local:\/\/[a-f0-9]+)/);
-    return match ? match[1] : chapterUrl.split('/').slice(0, 2).join('/');
-  }
-
-  try {
-    const url = new URL(chapterUrl);
-    if (url.hostname.includes('royalroad.com')) {
-      const match = url.pathname.match(/^\/fiction\/(\d+)\/([^/]+)/);
-      if (match) {
-        return `${url.origin}/fiction/${match[1]}/${match[2]}`;
-      }
-    }
-    const paths = url.pathname.split('/').filter(Boolean);
-    if (paths.length > 1) {
-      const last = paths[paths.length - 1];
-      if (last.includes('chuong') || last.includes('chapter') || last.includes('chap') || !isNaN(Number(last))) {
-        return `${url.origin}/${paths.slice(0, -1).join('/')}/`;
-      }
-    }
-    return `${url.origin}/${paths.join('/')}/`;
-  } catch {
-    return chapterUrl;
-  }
+interface QueryableDoc {
+  querySelectorAll: (selector: string) => NodeListOf<Element> | Element[];
 }
 
-function inferPrevNextFromUrl(chapterUrl: string): { prevUrl: string | null; nextUrl: string | null } {
-  let inferredPrev: string | null = null;
-  let inferredNext: string | null = null;
-  try {
-    const urlObj = new URL(chapterUrl);
-    let path = urlObj.pathname;
-    const hasTrailingSlash = path.endsWith('/');
-    if (hasTrailingSlash) path = path.slice(0, -1);
+function extractMangaImages(doc: QueryableDoc, pageUrl: string): { url: string; alt?: string }[] {
+  const selectors = [
+    '.page-chapter img',
+    '.reading-detail img',
+    '.reading-detail .page-chapter img',
+    '.chapter-content img',
+    '#chapter-content img',
+    '.reading-content img',
+    '.box-reading img',
+    '.content-reading img',
+    '.read-content img',
+    'div[class*="chapter-img"] img',
+  ];
 
-    const match = path.match(/^(.*\/[^\d]*)(\d+)$/);
-    if (match) {
-      const prefix = match[1];
-      const numStr = match[2];
-      const chapNum = parseInt(numStr, 10);
-      if (!isNaN(chapNum)) {
-        if (chapNum > 1) {
-          const prevNumStr = String(chapNum - 1).padStart(numStr.length, '0');
-          inferredPrev = urlObj.origin + prefix + prevNumStr + (hasTrailingSlash ? '/' : '');
-        }
-        const nextNumStr = String(chapNum + 1).padStart(numStr.length, '0');
-        inferredNext = urlObj.origin + prefix + nextNumStr + (hasTrailingSlash ? '/' : '');
-      }
+  let imgElements: Element[] = [];
+  for (const sel of selectors) {
+    const found = Array.from(doc.querySelectorAll(sel));
+    if (found.length > 0) {
+      imgElements = found;
+      break;
     }
-  } catch {}
-  return { prevUrl: inferredPrev, nextUrl: inferredNext };
+  }
+
+  // Fallback: if no container matched, check all <img> on page that look like chapter pages
+  if (imgElements.length === 0) {
+    const allImgs = Array.from(doc.querySelectorAll('img'));
+    imgElements = allImgs.filter((img: Element) => {
+      const cls = (img.getAttribute('class') || '').toLowerCase();
+      const parentCls = (img.parentElement?.getAttribute('class') || '').toLowerCase();
+      const id = (img.getAttribute('id') || '').toLowerCase();
+      return (
+        cls.includes('page') ||
+        cls.includes('chapter') ||
+        parentCls.includes('page') ||
+        parentCls.includes('chapter') ||
+        id.includes('image-') ||
+        id.includes('page-')
+      );
+    });
+  }
+
+  const result: { url: string; alt?: string }[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const img of imgElements) {
+    const rawSrc =
+      img.getAttribute('data-original') ||
+      img.getAttribute('data-src') ||
+      img.getAttribute('data-lazy-src') ||
+      img.getAttribute('data-cdn') ||
+      img.getAttribute('data-url') ||
+      img.getAttribute('src');
+
+    if (!rawSrc) continue;
+
+    const lower = rawSrc.toLowerCase();
+    if (
+      lower.includes('logo') ||
+      lower.includes('banner') ||
+      lower.includes('icon') ||
+      lower.includes('facebook') ||
+      lower.includes('avatar') ||
+      lower.includes('loading.gif') ||
+      lower.endsWith('.svg')
+    ) {
+      continue;
+    }
+
+    try {
+      const absoluteUrl = new URL(rawSrc, pageUrl).toString();
+      if (!seenUrls.has(absoluteUrl)) {
+        seenUrls.add(absoluteUrl);
+        result.push({
+          url: absoluteUrl,
+          alt: img.getAttribute('alt') || '',
+        });
+      }
+    } catch {}
+  }
+
+  return result;
 }
 
 export async function GET(request: NextRequest) {
@@ -114,6 +145,8 @@ export async function GET(request: NextRequest) {
         ]);
         const allRules = [...globalRules, ...bookRules, ...chapterRules];
         const content = allRules.length > 0 ? applyReplaceRules(row.content, allRules) : row.content;
+        const isManga = content ? (content.includes('manga-viewer') || content.includes('class="manga-img')) : false;
+
         return NextResponse.json({
           title: row.title || 'Untitled',
           content,
@@ -125,6 +158,7 @@ export async function GET(request: NextRequest) {
           chapters: [],
           originalFont: row.original_font,
           isTranslated: true,
+          isManga,
         });
       }
       return NextResponse.json(
@@ -166,6 +200,7 @@ export async function GET(request: NextRequest) {
       ]);
       const allRules = [...globalRules, ...bookRules, ...chapterRules];
       const content = allRules.length > 0 ? applyReplaceRules(cached.content, allRules) : cached.content;
+      const isManga = content ? (content.includes('manga-viewer') || content.includes('class="manga-img')) : false;
 
       let libraryChapters: { title: string; url: string }[] = [];
       let resolvedNextUrl = cached.next_url;
@@ -207,6 +242,7 @@ export async function GET(request: NextRequest) {
         chapters: libraryChapters,
         originalFont: cached.original_font,
         hasTranslation: !!cached.has_translation,
+        isManga,
       });
     }
   } catch (dbErr) {
@@ -224,13 +260,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+
     const response = await fetch(normalizedUrl, {
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         Accept:
           'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8',
         'Cache-Control': 'max-age=0',
       },
       next: { revalidate: 3600 }, // Cache response for 1 hour
@@ -257,9 +295,11 @@ export async function GET(request: NextRequest) {
     let prevUrl: string | null = null;
 
     const getAbsoluteUrl = (href: string | null) => {
-      if (!href) return null;
+      if (!href || href.startsWith('javascript:') || href === '#') return null;
       try {
-        return new URL(href, targetUrl).toString();
+        const u = new URL(href, targetUrl);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+        return u.toString();
       } catch {
         return null;
       }
@@ -306,7 +346,50 @@ export async function GET(request: NextRequest) {
       const absoluteUrl = getAbsoluteUrl(href);
       if (!absoluteUrl) continue;
 
-      // Match common prev link patterns (IDs, rel, class, text, titles, multilingual)
+      // Note: TruyenQQ and some sites have .prev class on both forward and backward buttons!
+      // Therefore, explicit text content ("chap trước" vs "chap sau") must take precedence!
+      if (
+        text.includes('chap trước') ||
+        text.includes('chương trước') ||
+        text.includes('tập trước') ||
+        text === 'trước' ||
+        text === '‹ trước' ||
+        text === '« trước' ||
+        text === '< trước' ||
+        text === 'prev' ||
+        text === 'previous' ||
+        text === 'previous chapter' ||
+        text === '< prev' ||
+        text === '‹ prev' ||
+        text === '« prev'
+      ) {
+        if (!prevUrl) prevUrl = absoluteUrl;
+        continue;
+      }
+
+      if (
+        text.includes('chap sau') ||
+        text.includes('chương sau') ||
+        text.includes('chương tiếp') ||
+        text.includes('chap tiếp') ||
+        text.includes('tập sau') ||
+        text.includes('tập tiếp') ||
+        text === 'tiếp' ||
+        text === 'sau' ||
+        text === 'tiếp ›' ||
+        text === 'tiếp »' ||
+        text === 'tiếp >' ||
+        text === 'next' ||
+        text === 'next chapter' ||
+        text === 'next >' ||
+        text === '› next' ||
+        text === '» next'
+      ) {
+        if (!nextUrl) nextUrl = absoluteUrl;
+        continue;
+      }
+
+      // Match common prev link patterns (IDs, rel, class, titles, multilingual)
       const isPrev = 
         id === 'prev_chap' || 
         id === 'prev-chap' || 
@@ -322,27 +405,9 @@ export async function GET(request: NextRequest) {
         title.includes('chương trước') ||
         title.includes('chap trước') ||
         ariaLabel.includes('prev') ||
-        ariaLabel.includes('trước') ||
-        text === 'prev' ||
-        text === 'previous' ||
-        text === 'previous chapter' ||
-        text === '< prev' ||
-        text === '‹ prev' ||
-        text === '« prev' ||
-        text.includes('prev chapter') ||
-        text.includes('chương trước') ||
-        text.includes('chap trước') ||
-        text.includes('tập trước') ||
-        text === 'back' ||
-        text === 'trước' ||
-        text === '‹ trước' ||
-        text === '« trước' ||
-        text === '< trước' ||
-        text === '‹' ||
-        text === '«' ||
-        text === '←';
+        ariaLabel.includes('trước');
 
-      // Match common next link patterns (IDs, rel, class, text, titles, multilingual)
+      // Match common next link patterns (IDs, rel, class, titles, multilingual)
       const isNext = 
         id === 'next_chap' || 
         id === 'next-chap' || 
@@ -359,28 +424,7 @@ export async function GET(request: NextRequest) {
         title.includes('chap sau') ||
         title.includes('chap tiếp') ||
         ariaLabel.includes('next') ||
-        ariaLabel.includes('tiếp') ||
-        text === 'next' ||
-        text === 'next chapter' ||
-        text === 'next >' ||
-        text === '› next' ||
-        text === '» next' ||
-        text.includes('next chapter') ||
-        text.includes('chương sau') ||
-        text.includes('chương tiếp') ||
-        text.includes('chap sau') ||
-        text.includes('chap tiếp') ||
-        text.includes('tập sau') ||
-        text.includes('tập tiếp') ||
-        text === 'forward' ||
-        text === 'tiếp' ||
-        text === 'sau' ||
-        text === 'tiếp ›' ||
-        text === 'tiếp »' ||
-        text === 'tiếp >' ||
-        text === '›' ||
-        text === '»' ||
-        text === '→';
+        ariaLabel.includes('tiếp');
 
       if (isPrev && !prevUrl) {
         prevUrl = absoluteUrl;
@@ -500,6 +544,49 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // 3. Fallback: If novel base page has chapter list (common for manga/comic sites like TruyenQQ)
+    if (chapters.length === 0 && novelUrl && !novelUrl.startsWith('local://')) {
+      try {
+        const novelRes = await fetch(novelUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            Accept:
+              'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          },
+          next: { revalidate: 3600 },
+        });
+        if (novelRes.ok) {
+          const novelHtml = await novelRes.text();
+          const novelDoc = new DOMParser().parseFromString(novelHtml, 'text/html');
+          const chapterLinks = Array.from(
+            novelDoc.querySelectorAll(
+              '.works-chapter-item a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a'
+            )
+          ) as HTMLAnchorElement[];
+
+          for (const a of chapterLinks) {
+            const title = a.textContent?.trim() || '';
+            const href = a.getAttribute('href');
+            if (href && title && !href.startsWith('javascript:') && href !== '#') {
+              const fullUrl = new URL(href, novelUrl).toString();
+              chapters.push({ title, url: normalizeUrl(fullUrl) });
+            }
+          }
+
+          if (chapters.length > 1) {
+            const firstNumMatch = chapters[0].url.match(/(\d+)(?:\.html)?$/);
+            const lastNumMatch = chapters[chapters.length - 1].url.match(/(\d+)(?:\.html)?$/);
+            if (firstNumMatch && lastNumMatch && parseInt(firstNumMatch[1], 10) > parseInt(lastNumMatch[1], 10)) {
+              chapters.reverse();
+            }
+          }
+        }
+      } catch (novelFetchErr) {
+        console.error('Failed to load chapters from novel page:', novelFetchErr);
+      }
+    }
+
     // Detect original font-family
     let originalFont: string | null = null;
     try {
@@ -532,15 +619,57 @@ export async function GET(request: NextRequest) {
       console.error('Failed to parse original font family:', fontErr);
     }
 
-    // Run Readability to extract the main content
-    const reader = new Readability(document as unknown as Document);
-    const article = reader.parse();
+    // Check for manga / comic chapters (multiple chapter images)
+    const mangaImages = extractMangaImages(document, normalizedUrl);
+    const isManga = mangaImages.length >= 2;
 
-    if (!article) {
-      return NextResponse.json(
-        { error: 'Could not extract clean text from this page. Try reading another chapter.' },
-        { status: 422 }
-      );
+    let content = '';
+    let articleTitle = '';
+    let excerpt = '';
+    let siteName = '';
+
+    if (isManga) {
+      // Build clean responsive manga reader HTML
+      content = `
+<div class="manga-viewer">
+  ${mangaImages
+    .map(
+      (img, idx) => `
+  <div class="manga-page-item" id="manga-page-${idx + 1}">
+    <span class="manga-page-number">Trang ${idx + 1} / ${mangaImages.length}</span>
+    <img
+      src="/api/proxy-image?url=${encodeURIComponent(img.url)}&referer=${encodeURIComponent(normalizedUrl)}"
+      alt="${img.alt || `Trang ${idx + 1}`}"
+      class="manga-img"
+      loading="${idx < 3 ? 'eager' : 'lazy'}"
+      decoding="async"
+    />
+  </div>`
+    )
+    .join('\n')}
+</div>`;
+
+      // Extract title from H1, breadcrumb, or document title
+      const rawH1 = document.querySelector('h1')?.textContent || '';
+      const docTitle = document.querySelector('title')?.textContent || '';
+      articleTitle = rawH1.replace(/\s+/g, ' ').trim() || docTitle.trim() || 'Untitled Manga Chapter';
+      siteName = new URL(normalizedUrl).hostname;
+    } else {
+      // Run Readability to extract the main content for text novels
+      const reader = new Readability(document as unknown as Document);
+      const article = reader.parse();
+
+      if (!article) {
+        return NextResponse.json(
+          { error: 'Could not extract clean text from this page. Try reading another chapter.' },
+          { status: 422 }
+        );
+      }
+
+      content = article.content || '';
+      articleTitle = article.title || 'Untitled';
+      excerpt = article.excerpt || '';
+      siteName = article.siteName || new URL(normalizedUrl).hostname;
     }
 
     let normalizedNextUrl = nextUrl ? normalizeUrl(nextUrl) : null;
@@ -552,22 +681,25 @@ export async function GET(request: NextRequest) {
       if (!normalizedNextUrl) normalizedNextUrl = inferred.nextUrl;
     }
 
-    // Apply replace rules
-    const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
-    const [globalRules, bookRules, chapterRules] = await Promise.all([
-      getReplaceRules('global'),
-      getReplaceRules('book', novelUrl),
-      getReplaceRules('chapter', normalizedUrl),
-    ]);
-    const allRules = [...globalRules, ...bookRules, ...chapterRules];
-    const content = allRules.length > 0 && article.content ? applyReplaceRules(article.content, allRules) : (article.content || '');
+    // Apply replace rules for text novels
+    if (!isManga) {
+      const [globalRules, bookRules, chapterRules] = await Promise.all([
+        getReplaceRules('global'),
+        getReplaceRules('book', novelUrl),
+        getReplaceRules('chapter', normalizedUrl),
+      ]);
+      const allRules = [...globalRules, ...bookRules, ...chapterRules];
+      if (allRules.length > 0 && content) {
+        content = applyReplaceRules(content, allRules);
+      }
+    }
 
-    // Save to cache database (save original content without rules applied)
+    // Save to cache database
     try {
       const chapterId = getUrlId(normalizedUrl);
       await sql`
         INSERT INTO chapters (id, novel_url, url, title, content, next_url, prev_url, original_font)
-        VALUES (${chapterId}, ${novelUrl}, ${normalizedUrl}, ${article.title || 'Untitled'}, ${article.content}, ${normalizedNextUrl}, ${normalizedPrevUrl}, ${originalFont || null})
+        VALUES (${chapterId}, ${novelUrl}, ${normalizedUrl}, ${articleTitle || 'Untitled'}, ${content}, ${normalizedNextUrl}, ${normalizedPrevUrl}, ${originalFont || null})
         ON CONFLICT (url) DO UPDATE SET
           title = EXCLUDED.title,
           content = EXCLUDED.content,
@@ -581,16 +713,17 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      title: article.title || 'Untitled',
+      title: articleTitle || 'Untitled',
       content,
-      excerpt: article.excerpt || '',
-      siteName: article.siteName || new URL(normalizedUrl).hostname,
+      excerpt,
+      siteName,
       nextUrl: normalizedNextUrl,
       prevUrl: normalizedPrevUrl,
       originalUrl: normalizedUrl,
       chapters,
       originalFont,
       hasTranslation: false,
+      isManga,
     });
   } catch (error: unknown) {
     console.error('Error in proxy read API:', error);
