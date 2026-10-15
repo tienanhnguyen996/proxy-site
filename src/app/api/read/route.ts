@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
 import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl } from '@/lib/utils';
+import { fetchHtmlWithBypass } from '@/lib/fetch-utils';
 
 export const preferredRegion = 'sin1';
 
@@ -262,26 +263,15 @@ export async function GET(request: NextRequest) {
   try {
     const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
 
-    const response = await fetch(normalizedUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9,vi;q=0.8',
-        'Cache-Control': 'max-age=0',
-      },
-      next: { revalidate: 3600 }, // Cache response for 1 hour
-    });
-
-    if (!response.ok) {
+    const fetchResult = await fetchHtmlWithBypass(normalizedUrl);
+    if (!fetchResult.ok || !fetchResult.html) {
       return NextResponse.json(
-        { error: `Failed to fetch external site. Status: ${response.status}` },
-        { status: response.status }
+        { error: fetchResult.error || `Failed to fetch external site. Status: ${fetchResult.status}` },
+        { status: fetchResult.status }
       );
     }
 
-    const htmlText = await response.text();
+    const htmlText = fetchResult.html;
 
     // Dynamically import Linkedom and Readability only on cache miss
     const { DOMParser } = await import('linkedom');
@@ -545,45 +535,55 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Fallback: If novel base page has chapter list (common for manga/comic sites like TruyenQQ)
-    if (chapters.length === 0 && novelUrl && !novelUrl.startsWith('local://')) {
-      try {
-        const novelRes = await fetch(novelUrl, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            Accept:
-              'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          },
-          next: { revalidate: 3600 },
-        });
-        if (novelRes.ok) {
-          const novelHtml = await novelRes.text();
-          const novelDoc = new DOMParser().parseFromString(novelHtml, 'text/html');
-          const chapterLinks = Array.from(
-            novelDoc.querySelectorAll(
-              '.works-chapter-item a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a'
-            )
-          ) as HTMLAnchorElement[];
+    if (chapters.length === 0) {
+      const parseChapterLinksFromDoc = (doc: QueryableDoc, baseUrl: string) => {
+        const links = Array.from(
+          doc.querySelectorAll(
+            '.works-chapter-item a, .works-chapter-list a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a'
+          )
+        ) as HTMLAnchorElement[];
 
-          for (const a of chapterLinks) {
-            const title = a.textContent?.trim() || '';
-            const href = a.getAttribute('href');
-            if (href && title && !href.startsWith('javascript:') && href !== '#') {
-              const fullUrl = new URL(href, novelUrl).toString();
-              chapters.push({ title, url: normalizeUrl(fullUrl) });
-            }
-          }
-
-          if (chapters.length > 1) {
-            const firstNumMatch = chapters[0].url.match(/(\d+)(?:\.html)?$/);
-            const lastNumMatch = chapters[chapters.length - 1].url.match(/(\d+)(?:\.html)?$/);
-            if (firstNumMatch && lastNumMatch && parseInt(firstNumMatch[1], 10) > parseInt(lastNumMatch[1], 10)) {
-              chapters.reverse();
-            }
+        const extracted: { title: string; url: string }[] = [];
+        for (const a of links) {
+          const title = a.textContent?.trim() || '';
+          const href = a.getAttribute('href');
+          if (href && title && !href.startsWith('javascript:') && href !== '#') {
+            const fullUrl = new URL(href, baseUrl).toString();
+            extracted.push({ title, url: normalizeUrl(fullUrl) });
           }
         }
-      } catch (novelFetchErr) {
-        console.error('Failed to load chapters from novel page:', novelFetchErr);
+        return extracted;
+      };
+
+      // Check if current document already has chapter links (e.g. if targetUrl itself is novel overview page)
+      const currentDocChapters = parseChapterLinksFromDoc(document, normalizedUrl);
+      if (currentDocChapters.length > 0) {
+        chapters.push(...currentDocChapters);
+      } else if (novelUrl && !novelUrl.startsWith('local://')) {
+        try {
+          const novelRes = await fetchHtmlWithBypass(novelUrl);
+          if (novelRes.ok && novelRes.html) {
+            const novelDoc = new DOMParser().parseFromString(novelRes.html, 'text/html');
+            const fetchedChapters = parseChapterLinksFromDoc(novelDoc, novelUrl);
+            chapters.push(...fetchedChapters);
+          }
+        } catch (novelFetchErr) {
+          console.error('Failed to load chapters from novel page:', novelFetchErr);
+        }
+      }
+
+      if (chapters.length > 1) {
+        const getChNum = (u: string) => {
+          const m = u.match(/(?:chap|chuong|chapter|tap)[-_]?(\d+(?:\.\d+)?)/i);
+          if (m) return parseFloat(m[1]);
+          const endM = u.match(/(\d+)(?:\.html)?$/);
+          return endM ? parseFloat(endM[1]) : null;
+        };
+        const firstNum = getChNum(chapters[0].url);
+        const lastNum = getChNum(chapters[chapters.length - 1].url);
+        if (firstNum !== null && lastNum !== null && firstNum > lastNum) {
+          chapters.reverse();
+        }
       }
     }
 

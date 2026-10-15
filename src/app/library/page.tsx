@@ -119,8 +119,9 @@ export default function LibraryPage() {
       // Infer title (remove chapter suffix if possible)
       let novelTitle = scrapeData.siteName || 'New Novel';
       if (scrapeData.title) {
-        novelTitle = scrapeData.title.split('-')[0].trim().split('Chương')[0].trim().split('Chapter')[0].trim();
-        if (!novelTitle) novelTitle = scrapeData.title;
+        let cleaned = scrapeData.title.split('-')[0].trim();
+        cleaned = cleaned.replace(/(?:chương|chap|chapter|tập)\s+.*$/i, '').trim();
+        novelTitle = cleaned || scrapeData.title;
       }
 
       // 2. Add to database via library API
