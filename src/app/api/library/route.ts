@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, pruneReadChapters, shouldUpdateProgress } from '@/lib/db';
-import { getUrlId, normalizeUrl } from '@/lib/utils';
+import { getUrlId, normalizeUrl, sortChaptersAscending } from '@/lib/utils';
 
 export const preferredRegion = 'sin1';
 
@@ -13,12 +13,28 @@ export async function GET(request: NextRequest) {
 
     if (novelUrl) {
       const normalizedNovelUrl = normalizeUrl(novelUrl);
-      const books = await sql`
-        SELECT id, novel_url, title, author, cover_url, site_name, total_chapters, last_read_url, last_read_title, scroll_position, updated_at
-        FROM library 
-        WHERE novel_url = ${normalizedNovelUrl}
-        LIMIT 1
-      `;
+      const includeChapters = searchParams.get('include_chapters') === 'true';
+      const books = includeChapters
+        ? await sql`
+            SELECT id, novel_url, title, author, cover_url, site_name, total_chapters, chapters_list, last_read_url, last_read_title, scroll_position, updated_at
+            FROM library 
+            WHERE novel_url = ${normalizedNovelUrl}
+            LIMIT 1
+          `
+        : await sql`
+            SELECT id, novel_url, title, author, cover_url, site_name, total_chapters, last_read_url, last_read_title, scroll_position, updated_at
+            FROM library 
+            WHERE novel_url = ${normalizedNovelUrl}
+            LIMIT 1
+          `;
+      if (books.length > 0 && books[0].chapters_list) {
+        try {
+          const list = JSON.parse(books[0].chapters_list);
+          if (Array.isArray(list)) {
+            books[0].chapters_list = JSON.stringify(sortChaptersAscending(list));
+          }
+        } catch {}
+      }
       return NextResponse.json(books.length > 0 ? books[0] : null);
     }
 
@@ -89,7 +105,8 @@ export async function POST(request: NextRequest) {
         try {
           const list = JSON.parse(chapters_list);
           if (Array.isArray(list)) {
-            const normalizedList = list.map((ch: { url: string }) => ({
+            const sorted = sortChaptersAscending(list);
+            const normalizedList = sorted.map((ch: { url: string; title?: string }) => ({
               ...ch,
               url: normalizeUrl(ch.url)
             }));

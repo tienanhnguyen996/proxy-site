@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { normalizeUrl } from './novel-utils';
 
-export { normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl } from './novel-utils';
+export { normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, getChapterNumber, sortChaptersAscending } from './novel-utils';
 
 /**
  * Generates a simple hash (MD5) from a URL to use as a database ID.

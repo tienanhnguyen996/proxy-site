@@ -80,3 +80,54 @@ export function inferPrevNextFromUrl(chapterUrl: string): { prevUrl: string | nu
   } catch {}
   return { prevUrl: inferredPrev, nextUrl: inferredNext };
 }
+
+export function getChapterNumber(url: string, title?: string): number | null {
+  if (!url) return null;
+  const norm = url.trim();
+  const urlMatch = norm.match(/(?:chap|chuong|chapter|tap)[-_]?(\d+(?:\.\d+)?)/i);
+  if (urlMatch) {
+    const val = parseFloat(urlMatch[1]);
+    if (!isNaN(val)) return val;
+  }
+  if (title) {
+    const titleMatch = title.match(/(?:chap|chuong|chapter|tap|tập|chương)\s*(\d+(?:\.\d+)?)/i);
+    if (titleMatch) {
+      const val = parseFloat(titleMatch[1]);
+      if (!isNaN(val)) return val;
+    }
+  }
+  const endMatch = norm.match(/(\d+)(?:\.html)?$/);
+  if (endMatch) {
+    const val = parseFloat(endMatch[1]);
+    if (!isNaN(val)) return val;
+  }
+  return null;
+}
+
+export function sortChaptersAscending<T extends { url: string; title?: string }>(chapters: T[]): T[] {
+  if (!chapters || chapters.length <= 1) return chapters;
+
+  let firstNum: number | null = null;
+  for (let i = 0; i < Math.min(5, chapters.length); i++) {
+    const n = getChapterNumber(chapters[i].url, chapters[i].title);
+    if (n !== null) {
+      firstNum = n;
+      break;
+    }
+  }
+
+  let lastNum: number | null = null;
+  for (let i = chapters.length - 1; i >= Math.max(0, chapters.length - 5); i--) {
+    const n = getChapterNumber(chapters[i].url, chapters[i].title);
+    if (n !== null) {
+      lastNum = n;
+      break;
+    }
+  }
+
+  if (firstNum !== null && lastNum !== null && firstNum > lastNum) {
+    return [...chapters].reverse();
+  }
+
+  return chapters;
+}

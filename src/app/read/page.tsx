@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { getChapter, getBook, getLocalRulesForChapter, putBook, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalRule } from '@/lib/localdb';
 import { applyTextRules } from '@/lib/replace-utils';
 
-import { getNovelBaseUrl } from '@/lib/novel-utils';
+import { getNovelBaseUrl, sortChaptersAscending } from '@/lib/novel-utils';
 
 interface ArticleData {
   title: string;
@@ -555,7 +555,7 @@ function ReaderView() {
             try {
               const parsed = JSON.parse(book.chapters_list);
               if (parsed && parsed.length > 0) {
-                setChapters(parsed);
+                setChapters(sortChaptersAscending(parsed));
               }
             } catch {}
           }
@@ -569,7 +569,7 @@ function ReaderView() {
 
           result = parsed;
           if (parsed.chapters && parsed.chapters.length > 0) {
-            setChapters(parsed.chapters);
+            setChapters(sortChaptersAscending(parsed.chapters));
           }
         }
 
@@ -693,7 +693,7 @@ function ReaderView() {
               try {
                 const parsedList = JSON.parse(book.chapters_list);
                 if (parsedList && parsedList.length > 0) {
-                  setChapters(parsedList);
+                  setChapters(sortChaptersAscending(parsedList));
                 }
               } catch {}
             }
@@ -737,7 +737,7 @@ function ReaderView() {
               try {
                 const parsedList = JSON.parse(matched.chapters_list);
                 if (parsedList && parsedList.length > 0) {
-                  setChapters(parsedList);
+                  setChapters(sortChaptersAscending(parsedList));
                 }
               } catch (parseErr) {
                 console.error('Failed to parse library chapters_list:', parseErr);
@@ -1328,10 +1328,10 @@ function ReaderView() {
       })
     : -1;
 
-  const effectivePrevUrl = data.prevUrl || (currentChapterIndex > 0 ? chapters[currentChapterIndex - 1]?.url : null);
+  const effectivePrevUrl = (currentChapterIndex > 0 ? chapters[currentChapterIndex - 1]?.url : null) || (currentChapterIndex === -1 ? data.prevUrl : null);
   const effectiveNextUrl = lastLoadedChapter
-    ? (lastLoadedChapter.nextUrl || (lastChapterIndex >= 0 && lastChapterIndex < chapters.length - 1 ? chapters[lastChapterIndex + 1]?.url : null))
-    : (data.nextUrl || (currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1]?.url : null));
+    ? ((lastChapterIndex >= 0 && lastChapterIndex < chapters.length - 1 ? chapters[lastChapterIndex + 1]?.url : null) || lastLoadedChapter.nextUrl)
+    : ((currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1]?.url : null) || data.nextUrl);
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>

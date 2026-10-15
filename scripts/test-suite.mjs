@@ -45,7 +45,7 @@ async function runAll() {
   // --------------------------------------------------------------------------
   console.log('📦 1. UNIT TESTS: Novel & Manga URL Utilities');
   // --------------------------------------------------------------------------
-  const { normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl } = await import('../src/lib/novel-utils.ts');
+  const { normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending } = await import('../src/lib/novel-utils.ts');
 
   await test('normalizeUrl: strips trailing slashes and whitespace', () => {
     assert.strictEqual(normalizeUrl('  https://site.com/novel/  '), 'https://site.com/novel');
@@ -112,6 +112,26 @@ async function runAll() {
       chap1.nextUrl,
       'https://truyenqqko.com/truyen-tranh/yeu-than-ky-746-chap-2'
     );
+  });
+
+  await test('sortChaptersAscending: corrects descending chapter lists to chronological ascending order', () => {
+    const desc = [
+      { title: 'Chương 110', url: 'https://truyenqqko.com/chap-110' },
+      { title: 'Chương 109', url: 'https://truyenqqko.com/chap-109' },
+      { title: 'Chương 1', url: 'https://truyenqqko.com/chap-1' },
+    ];
+    const sorted = sortChaptersAscending(desc);
+    assert.strictEqual(sorted[0].title, 'Chương 1');
+    assert.strictEqual(sorted[sorted.length - 1].title, 'Chương 110');
+
+    const asc = [
+      { title: 'Chương 1', url: 'https://truyenqqko.com/chap-1' },
+      { title: 'Chương 2', url: 'https://truyenqqko.com/chap-2' },
+      { title: 'Chương 110', url: 'https://truyenqqko.com/chap-110' },
+    ];
+    const ascSorted = sortChaptersAscending(asc);
+    assert.strictEqual(ascSorted[0].title, 'Chương 1');
+    assert.strictEqual(ascSorted[ascSorted.length - 1].title, 'Chương 110');
   });
 
   // --------------------------------------------------------------------------

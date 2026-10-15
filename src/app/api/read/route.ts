@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
-import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl } from '@/lib/utils';
+import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending } from '@/lib/utils';
 import { fetchHtmlWithBypass } from '@/lib/fetch-utils';
 
 export const preferredRegion = 'sin1';
@@ -220,7 +220,7 @@ export async function GET(request: NextRequest) {
         if (libRows.length > 0 && libRows[0].chapters_list) {
           const list = JSON.parse(libRows[0].chapters_list);
           if (Array.isArray(list)) {
-            libraryChapters = list;
+            libraryChapters = sortChaptersAscending(list);
           }
         } else if (novelUrl && !novelUrl.startsWith('local://')) {
           // If the book hasn't been added to the library yet, attempt to load chapters from the novel overview page
@@ -243,17 +243,7 @@ export async function GET(request: NextRequest) {
                 }
               }
               if (libraryChapters.length > 1) {
-                const getChNum = (u: string) => {
-                  const m = u.match(/(?:chap|chuong|chapter|tap)[-_]?(\d+(?:\.\d+)?)/i);
-                  if (m) return parseFloat(m[1]);
-                  const endM = u.match(/(\d+)(?:\.html)?$/);
-                  return endM ? parseFloat(endM[1]) : null;
-                };
-                const firstNum = getChNum(libraryChapters[0].url);
-                const lastNum = getChNum(libraryChapters[libraryChapters.length - 1].url);
-                if (firstNum !== null && lastNum !== null && firstNum > lastNum) {
-                  libraryChapters.reverse();
-                }
+                libraryChapters = sortChaptersAscending(libraryChapters);
               }
             }
           } catch (fetchErr) {
@@ -619,17 +609,8 @@ export async function GET(request: NextRequest) {
       }
 
       if (chapters.length > 1) {
-        const getChNum = (u: string) => {
-          const m = u.match(/(?:chap|chuong|chapter|tap)[-_]?(\d+(?:\.\d+)?)/i);
-          if (m) return parseFloat(m[1]);
-          const endM = u.match(/(\d+)(?:\.html)?$/);
-          return endM ? parseFloat(endM[1]) : null;
-        };
-        const firstNum = getChNum(chapters[0].url);
-        const lastNum = getChNum(chapters[chapters.length - 1].url);
-        if (firstNum !== null && lastNum !== null && firstNum > lastNum) {
-          chapters.reverse();
-        }
+        const sorted = sortChaptersAscending(chapters);
+        chapters.splice(0, chapters.length, ...sorted);
       }
     }
 
