@@ -215,11 +215,51 @@ export async function GET(request: NextRequest) {
           const list = JSON.parse(libRows[0].chapters_list);
           if (Array.isArray(list)) {
             libraryChapters = list;
-            const idx = list.findIndex((c: { url: string }) => normalizeUrl(c.url) === normalizedUrl);
-            if (idx !== -1) {
-              if (!resolvedPrevUrl && idx > 0) resolvedPrevUrl = list[idx - 1].url;
-              if (!resolvedNextUrl && idx < list.length - 1) resolvedNextUrl = list[idx + 1].url;
+          }
+        } else if (novelUrl && !novelUrl.startsWith('local://')) {
+          // If the book hasn't been added to the library yet, attempt to load chapters from the novel overview page
+          try {
+            const novelRes = await fetchHtmlWithBypass(novelUrl);
+            if (novelRes.ok && novelRes.html) {
+              const { DOMParser } = await import('linkedom');
+              const novelDoc = new DOMParser().parseFromString(novelRes.html, 'text/html');
+              const links = Array.from(
+                novelDoc.querySelectorAll(
+                  '.works-chapter-item a, .works-chapter-list a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a'
+                )
+              ) as HTMLAnchorElement[];
+              for (const a of links) {
+                const title = a.textContent?.trim() || '';
+                const href = a.getAttribute('href');
+                if (href && title && !href.startsWith('javascript:') && href !== '#') {
+                  const fullUrl = new URL(href, novelUrl).toString();
+                  libraryChapters.push({ title, url: normalizeUrl(fullUrl) });
+                }
+              }
+              if (libraryChapters.length > 1) {
+                const getChNum = (u: string) => {
+                  const m = u.match(/(?:chap|chuong|chapter|tap)[-_]?(\d+(?:\.\d+)?)/i);
+                  if (m) return parseFloat(m[1]);
+                  const endM = u.match(/(\d+)(?:\.html)?$/);
+                  return endM ? parseFloat(endM[1]) : null;
+                };
+                const firstNum = getChNum(libraryChapters[0].url);
+                const lastNum = getChNum(libraryChapters[libraryChapters.length - 1].url);
+                if (firstNum !== null && lastNum !== null && firstNum > lastNum) {
+                  libraryChapters.reverse();
+                }
+              }
             }
+          } catch (fetchErr) {
+            console.error('Failed to resolve novel chapters on cache hit:', fetchErr);
+          }
+        }
+
+        if (libraryChapters.length > 0) {
+          const idx = libraryChapters.findIndex((c: { url: string }) => normalizeUrl(c.url) === normalizedUrl);
+          if (idx !== -1) {
+            if (!resolvedPrevUrl && idx > 0) resolvedPrevUrl = libraryChapters[idx - 1].url;
+            if (!resolvedNextUrl && idx < libraryChapters.length - 1) resolvedNextUrl = libraryChapters[idx + 1].url;
           }
         }
       } catch (libErr) {

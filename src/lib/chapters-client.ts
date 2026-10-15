@@ -6,24 +6,32 @@
  */
 
 const CHAPTER_PATTERNS = [
-  /(?:^|\n)\s*(?:Chương|CHƯƠNG|Chương)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/im,
-  /(?:^|\n)\s*(?:Chapter|CHAPTER)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/im,
-  /(?:^|\n)\s*(?:Ch\.?|chap\.?)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/im,
-  /(?:^|\n)\s*(\d{1,4})\.\s*\n/im,
-  /(?:^|\n)\s*(?:Tập|TẬP)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/im,
+  /(?:^|\n)\s*(?:Chương|CHƯƠNG|Chương)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/gim,
+  /(?:^|\n)\s*(?:Chapter|CHAPTER)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/gim,
+  /(?:^|\n)\s*(?:Ch\.?|chap\.?)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/gim,
+  /(?:^|\n)\s*(\d{1,4})\.\s*\n/gim,
+  /(?:^|\n)\s*(?:Tập|TẬP)\s+(\d+)(?:\s*[:\-–—]|\.?\s*\n)/gim,
 ];
 
 export function detectChapters(text: string): { title: string; content: string }[] | null {
   const boundaries: { index: number; title: string; number: number }[] = [];
 
   for (const pattern of CHAPTER_PATTERNS) {
-    const regex = new RegExp(pattern.source, pattern.flags);
+    const flags = pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g';
+    const regex = new RegExp(pattern.source, flags);
     let match;
     while ((match = regex.exec(text)) !== null) {
-      const start = match.index;
-      const titleMatch = match[0].trim().split('\n')[0].trim();
+      let actualStart = match.index;
+      while (actualStart < text.length && (text[actualStart] === '\n' || text[actualStart] === '\r')) {
+        actualStart++;
+      }
+      const lineEnd = text.indexOf('\n', actualStart);
+      const titleMatch = (lineEnd === -1 ? text.slice(actualStart) : text.slice(actualStart, lineEnd)).trim();
       const num = match[1] ? parseInt(match[1]) : 0;
-      boundaries.push({ index: start, title: titleMatch, number: num });
+      boundaries.push({ index: actualStart, title: titleMatch, number: num });
+      if (regex.lastIndex === match.index) {
+        regex.lastIndex++;
+      }
     }
   }
 
