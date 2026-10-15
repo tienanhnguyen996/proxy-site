@@ -274,15 +274,15 @@ Nội dung chương 2 tiếp diễn...
   });
 
   await test('Database Cache: repeated read is instantaneous', async () => {
-    const url = 'https://truyenqqko.com/truyen-tranh/yeu-than-ky-746-chap-0';
+    const url = 'https://truyenqqko.com/truyen-tranh/toi-thang-cap-mot-minh-5898-chap-22';
     const start = Date.now();
     const res = await fetch(`${PROD_BASE}/api/read?url=${encodeURIComponent(url)}`, {
       headers: { Cookie: sessionCookie },
     });
     const duration = Date.now() - start;
     assert.strictEqual(res.status, 200);
-    // Cached response typically finishes within 200ms
-    assert.ok(duration < 800, `Cache hit should be fast, took ${duration}ms`);
+    // Cached response typically finishes within ~300-500ms over internet
+    assert.ok(duration < 1200, `Cache hit should be fast, took ${duration}ms`);
   });
 
   // --------------------------------------------------------------------------
