@@ -84,6 +84,15 @@ function ReaderView() {
   const [error, setError] = useState<string | null>(() => !targetUrl ? 'No URL provided to read.' : null);
   const [data, setData] = useState<ArticleData | null>(null);
   const [chapters, setChapters] = useState<{ title: string; url: string }[]>([]);
+  const [multiChapterCount, setMultiChapterCount] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = parseInt(localStorage.getItem('aetherread_multiChapterCount') || '1', 10);
+      return !isNaN(saved) && saved >= 1 && saved <= 10 ? saved : 1;
+    }
+    return 1;
+  });
+  const [loadedChapters, setLoadedChapters] = useState<ArticleData[]>([]);
+  const [loadingExtraChapters, setLoadingExtraChapters] = useState(false);
 
   // TTS Audio Book State
   const [ttsActive, setTtsActive] = useState(false);
@@ -461,8 +470,9 @@ function ReaderView() {
   };
 
   const getCurrentChapterSelectValue = () => {
-    if (!data?.chapters || data.chapters.length === 0) return data?.originalUrl || '';
-    const exactMatch = data.chapters.find(c => c.url === data.originalUrl);
+    const list = (chapters && chapters.length > 0) ? chapters : (data?.chapters || []);
+    if (list.length === 0) return data?.originalUrl || '';
+    const exactMatch = list.find(c => c.url === data?.originalUrl);
     if (exactMatch) return exactMatch.url;
 
     const normalizePath = (u: string) => {
@@ -471,15 +481,15 @@ function ReaderView() {
         if (p.endsWith('/')) p = p.slice(0, -1);
         return p;
       } catch {
-        return u;
+        return u.replace(/\/+$/, '');
       }
     };
     
-    const currentPath = normalizePath(data.originalUrl);
-    const pathMatch = data.chapters.find(c => normalizePath(c.url) === currentPath);
+    const currentPath = normalizePath(data?.originalUrl || '');
+    const pathMatch = list.find(c => normalizePath(c.url) === currentPath);
     if (pathMatch) return pathMatch.url;
 
-    return data.chapters[0].url;
+    return list[0].url;
   };
 
   // Initialize document theme on mount
@@ -512,6 +522,7 @@ function ReaderView() {
     const fetchArticle = async () => {
       setLoading(true);
       setError(null);
+      setLoadedChapters([]);
       try {
         let result: ArticleData;
 
@@ -579,6 +590,79 @@ function ReaderView() {
 
     fetchArticle();
   }, [targetUrl]);
+
+  // Background multi-chapter loader for manga
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadExtraChapters = async () => {
+      if (!data?.isManga || multiChapterCount <= 1 || !chapters || chapters.length === 0) {
+        setLoadedChapters((prev) => (prev.length > 0 ? [] : prev));
+        setLoadingExtraChapters(false);
+        return;
+      }
+
+      const norm = (u?: string | null) => {
+        if (!u) return '';
+        try {
+          let p = new URL(u).pathname;
+          if (p.endsWith('/')) p = p.slice(0, -1);
+          return p;
+        } catch {
+          return u.replace(/\/+$/, '');
+        }
+      };
+
+      const currentNorm = norm(data.originalUrl || targetUrl);
+      const currentIndex = chapters.findIndex(c => norm(c.url) === currentNorm);
+      if (currentIndex === -1) {
+        setLoadedChapters((prev) => (prev.length > 0 ? [] : prev));
+        setLoadingExtraChapters(false);
+        return;
+      }
+
+      const chaptersToLoad = chapters.slice(currentIndex + 1, currentIndex + multiChapterCount);
+      if (chaptersToLoad.length === 0) {
+        setLoadedChapters((prev) => (prev.length > 0 ? [] : prev));
+        setLoadingExtraChapters(false);
+        return;
+      }
+
+      setLoadingExtraChapters(true);
+
+      try {
+        const results = await Promise.all(
+          chaptersToLoad.map(async (chap) => {
+            try {
+              const response = await fetch(`/api/read?url=${encodeURIComponent(chap.url)}`);
+              if (!response.ok) return null;
+              const parsed = await response.json();
+              return parsed.isManga ? (parsed as ArticleData) : null;
+            } catch (err) {
+              console.error('Failed to load additional chapter:', chap.url, err);
+              return null;
+            }
+          })
+        );
+
+        if (cancelled) return;
+        const valid = results.filter((c): c is ArticleData => c !== null);
+        setLoadedChapters(valid);
+      } catch (err) {
+        console.error('Failed to load extra chapters in background:', err);
+      } finally {
+        if (!cancelled) {
+          setLoadingExtraChapters(false);
+        }
+      }
+    };
+
+    loadExtraChapters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.originalUrl, data?.isManga, chapters, multiChapterCount, targetUrl]);
 
   // Save initial progress (scroll = 0) when a new chapter is loaded
   useEffect(() => {
@@ -1225,8 +1309,29 @@ function ReaderView() {
       })
     : -1;
 
+  const lastLoadedChapter = (data.isManga && loadedChapters.length > 0)
+    ? loadedChapters[loadedChapters.length - 1]
+    : null;
+
+  const lastChapterIndex = lastLoadedChapter && chapters && chapters.length > 0
+    ? chapters.findIndex(c => {
+        const norm = (u: string) => {
+          try {
+            let p = new URL(u).pathname;
+            if (p.endsWith('/')) p = p.slice(0, -1);
+            return p;
+          } catch {
+            return u.replace(/\/+$/, '');
+          }
+        };
+        return norm(c.url) === norm(lastLoadedChapter.originalUrl);
+      })
+    : -1;
+
   const effectivePrevUrl = data.prevUrl || (currentChapterIndex > 0 ? chapters[currentChapterIndex - 1]?.url : null);
-  const effectiveNextUrl = data.nextUrl || (currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1]?.url : null);
+  const effectiveNextUrl = lastLoadedChapter
+    ? (lastLoadedChapter.nextUrl || (lastChapterIndex >= 0 && lastChapterIndex < chapters.length - 1 ? chapters[lastChapterIndex + 1]?.url : null))
+    : (data.nextUrl || (currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1 ? chapters[currentChapterIndex + 1]?.url : null));
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -1522,6 +1627,55 @@ function ReaderView() {
               </div>
             </div>
 
+            {/* Multi-Chapter Loading for Manga */}
+            {data?.isManga && (
+              <div className="control-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="control-label">Continuous Reading</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>{multiChapterCount === 1 ? '1 (Single)' : `${multiChapterCount} Chapters`}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    className="btn"
+                    style={{ padding: '0.25rem 0.5rem', minWidth: '28px' }}
+                    onClick={() => {
+                      const newValue = Math.max(1, multiChapterCount - 1);
+                      setMultiChapterCount(newValue);
+                      localStorage.setItem('aetherread_multiChapterCount', String(newValue));
+                    }}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min="1"
+                    max="10"
+                    value={multiChapterCount}
+                    onChange={(e) => {
+                      const newValue = parseInt(e.target.value);
+                      setMultiChapterCount(newValue);
+                      localStorage.setItem('aetherread_multiChapterCount', String(newValue));
+                    }}
+                    style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                  />
+                  <button
+                    className="btn"
+                    style={{ padding: '0.25rem 0.5rem', minWidth: '28px' }}
+                    onClick={() => {
+                      const newValue = Math.min(10, multiChapterCount + 1);
+                      setMultiChapterCount(newValue);
+                      localStorage.setItem('aetherread_multiChapterCount', String(newValue));
+                    }}
+                  >
+                    +
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--meta-fg)', marginTop: '4px' }}>
+                  Load multiple chapters at once for seamless reading
+                </div>
+              </div>
+            )}
+
             {/* Translation Source */}
             <div className="control-group" style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', marginTop: '12px' }}>
               <span className="control-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1739,20 +1893,88 @@ function ReaderView() {
           </div>
 
           {/* Extracted story content */}
-          <div 
+          <div
             ref={readerContentRef}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUpOrCancel}
             onPointerCancel={handlePointerUpOrCancel}
             className={`reader-content ${data.isManga ? 'reader-content-manga' : ''} ${fontFamily === 'sans' ? 'font-sans' : fontFamily === 'font-be-vietnam' ? 'font-be-vietnam' : fontFamily === 'font-literata' ? 'font-literata' : fontFamily === 'serif-lora' ? 'font-serif-lora' : ''}`}
-            style={{ 
-              fontSize: `${fontSizePx}px`, 
+            style={{
+              fontSize: `${fontSizePx}px`,
               lineHeight: lineHeights[lineHeight],
               fontFamily: fontFamily === 'original' && data.originalFont ? data.originalFont : undefined
             }}
             dangerouslySetInnerHTML={{ __html: translatedContent || data.content }}
           />
+
+          {/* Additional loaded chapters for manga */}
+          {data.isManga && loadedChapters.length > 0 && (
+            <div className="manga-additional-chapters">
+              {loadedChapters.map((chapter, idx) => (
+                <div key={chapter.originalUrl || idx} style={{ marginTop: '2.5rem' }}>
+                  <div style={{
+                    borderTop: '2px dashed var(--accent)',
+                    paddingTop: '1.25rem',
+                    marginBottom: '1.25rem',
+                    textAlign: 'center'
+                  }}>
+                    <h2 style={{
+                      fontSize: '1.35rem',
+                      fontWeight: 700,
+                      color: 'var(--accent)',
+                      marginBottom: '0.25rem'
+                    }}>
+                      {chapter.title}
+                    </h2>
+                    {chapter.siteName && (
+                      <div style={{
+                        fontSize: '0.8rem',
+                        color: 'var(--meta-fg)'
+                      }}>
+                        {chapter.siteName}
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    className="reader-content reader-content-manga"
+                    dangerouslySetInnerHTML={{ __html: chapter.content }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Background loading indicator */}
+          {data.isManga && loadingExtraChapters && (
+            <div style={{
+              padding: '1.25rem',
+              textAlign: 'center',
+              background: 'var(--accent-soft)',
+              borderRadius: '8px',
+              marginTop: '2rem',
+              color: 'var(--accent)',
+              fontSize: '0.85rem',
+              fontWeight: 500
+            }}>
+              Loading next chapters in background…
+            </div>
+          )}
+
+          {/* Continuous reading status badge */}
+          {data.isManga && loadedChapters.length > 0 && !loadingExtraChapters && (
+            <div style={{
+              padding: '0.75rem 1rem',
+              textAlign: 'center',
+              background: 'var(--accent-soft)',
+              borderRadius: '8px',
+              marginTop: '2rem',
+              color: 'var(--meta-fg)',
+              fontSize: '0.8rem'
+            }}>
+              ✓ Continuous reading active ({loadedChapters.length + 1} chapters displayed)
+            </div>
+          )}
 
           {/* Bottom navigation */}
           <div className="chapter-nav" style={{ alignItems: 'center' }}>
