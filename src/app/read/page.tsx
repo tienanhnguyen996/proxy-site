@@ -84,7 +84,6 @@ function ReaderView() {
   const [error, setError] = useState<string | null>(() => !targetUrl ? 'No URL provided to read.' : null);
   const [data, setData] = useState<ArticleData | null>(null);
   const [chapters, setChapters] = useState<{ title: string; url: string }[]>([]);
-  const [scrollProgress, setScrollProgress] = useState(0);
 
   // TTS Audio Book State
   const [ttsActive, setTtsActive] = useState(false);
@@ -103,6 +102,8 @@ function ReaderView() {
   const [autoNextChapter, setAutoNextChapter] = useState<boolean>(true);
 
   // Refs to track progress, audio elements, and live rate
+  const scrollProgressRef = useRef<number>(0);
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
   const lastSavedUrlRef = useRef<string>('');
   const lastSavedProgressRef = useRef<number>(0);
   const readerContentRef = useRef<HTMLDivElement>(null);
@@ -453,7 +454,7 @@ function ReaderView() {
   const handleChapterChange = (url: string) => {
     if (url) {
       if (isSaved && data) {
-        saveProgress(scrollProgress);
+        saveProgress(scrollProgressRef.current);
       }
       router.push(`/read?url=${encodeURIComponent(url)}`);
     }
@@ -569,6 +570,10 @@ function ReaderView() {
       } finally {
         setLoading(false);
         window.scrollTo(0, 0); // scroll to top on new chapter load
+        scrollProgressRef.current = 0;
+        if (progressBarRef.current) {
+          progressBarRef.current.style.width = '0%';
+        }
       }
     };
 
@@ -619,6 +624,10 @@ function ReaderView() {
                   window.scrollTo(0, (book.scroll_position / 100) * totalHeight);
                   lastSavedProgressRef.current = book.scroll_position;
                   lastSavedUrlRef.current = data.originalUrl;
+                  scrollProgressRef.current = book.scroll_position;
+                  if (progressBarRef.current) {
+                    progressBarRef.current.style.width = `${book.scroll_position}%`;
+                  }
                 }
               }, 250);
             }
@@ -660,6 +669,10 @@ function ReaderView() {
                   // Update refs to match restored position
                   lastSavedProgressRef.current = matched.scroll_position;
                   lastSavedUrlRef.current = data.originalUrl;
+                  scrollProgressRef.current = matched.scroll_position;
+                  if (progressBarRef.current) {
+                    progressBarRef.current.style.width = `${matched.scroll_position}%`;
+                  }
                 }
               }, 250);
             }
@@ -857,19 +870,29 @@ function ReaderView() {
     }
   };
 
-  // Track scroll progress and update local state
+  // Track scroll progress and update progress bar without causing React re-renders
   useEffect(() => {
     if (!data) return;
 
+    let ticking = false;
     const handleScroll = () => {
-      const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
-      if (totalHeight > 0) {
-        const progress = (window.scrollY / totalHeight) * 100;
-        setScrollProgress(progress);
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const totalHeight = document.documentElement.scrollHeight - window.innerHeight;
+          if (totalHeight > 0) {
+            const progress = Math.min(100, Math.max(0, (window.scrollY / totalHeight) * 100));
+            scrollProgressRef.current = progress;
+            if (progressBarRef.current) {
+              progressBarRef.current.style.width = `${progress}%`;
+            }
+          }
+          ticking = false;
+        });
+        ticking = true;
       }
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       window.removeEventListener('scroll', handleScroll);
     };
@@ -880,18 +903,19 @@ function ReaderView() {
     if (!data || !isSaved) return;
 
     const interval = setInterval(() => {
-      const diff = Math.abs(scrollProgress - lastSavedProgressRef.current);
+      const currentProgress = scrollProgressRef.current;
+      const diff = Math.abs(currentProgress - lastSavedProgressRef.current);
       // Only sync if the scroll position changed by more than 1.5% or the URL changed
       if (diff > 1.5 || lastSavedUrlRef.current !== data.originalUrl) {
-        lastSavedProgressRef.current = scrollProgress;
+        lastSavedProgressRef.current = currentProgress;
         lastSavedUrlRef.current = data.originalUrl;
-        saveProgress(scrollProgress);
+        saveProgress(currentProgress);
       }
     }, 30000); // Check and save every 30 seconds
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, isSaved, scrollProgress]);
+  }, [data, isSaved]);
 
   function saveToHistory(url: string, title: string, siteName: string) {
     const historyJSON = localStorage.getItem('aetherread_history');
@@ -1208,7 +1232,7 @@ function ReaderView() {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Scroll Progress Bar */}
       <div className="progress-bar-container">
-        <div className="progress-bar" style={{ width: `${scrollProgress}%` }}></div>
+        <div ref={progressBarRef} className="progress-bar" style={{ width: `${scrollProgressRef.current}%` }}></div>
       </div>
 
       {/* Header */}

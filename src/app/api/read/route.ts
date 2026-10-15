@@ -145,8 +145,11 @@ export async function GET(request: NextRequest) {
           getReplaceRules('chapter', normalizedUrl),
         ]);
         const allRules = [...globalRules, ...bookRules, ...chapterRules];
-        const content = allRules.length > 0 ? applyReplaceRules(row.content, allRules) : row.content;
+        let content = allRules.length > 0 ? applyReplaceRules(row.content, allRules) : row.content;
         const isManga = content ? (content.includes('manga-viewer') || content.includes('class="manga-img')) : false;
+        if (isManga && content) {
+          content = content.replace(/<span class="manga-page-number">.*?<\/span>\s*/gi, '');
+        }
 
         return NextResponse.json({
           title: row.title || 'Untitled',
@@ -200,8 +203,11 @@ export async function GET(request: NextRequest) {
         getReplaceRules('chapter', normalizedUrl),
       ]);
       const allRules = [...globalRules, ...bookRules, ...chapterRules];
-      const content = allRules.length > 0 ? applyReplaceRules(cached.content, allRules) : cached.content;
+      let content = allRules.length > 0 ? applyReplaceRules(cached.content, allRules) : cached.content;
       const isManga = content ? (content.includes('manga-viewer') || content.includes('class="manga-img')) : false;
+      if (isManga && content) {
+        content = content.replace(/<span class="manga-page-number">.*?<\/span>\s*/gi, '');
+      }
 
       let libraryChapters: { title: string; url: string }[] = [];
       let resolvedNextUrl = cached.next_url;
@@ -676,12 +682,11 @@ export async function GET(request: NextRequest) {
     .map(
       (img, idx) => `
   <div class="manga-page-item" id="manga-page-${idx + 1}">
-    <span class="manga-page-number">Trang ${idx + 1} / ${mangaImages.length}</span>
     <img
       src="/api/proxy-image?url=${encodeURIComponent(img.url)}&referer=${encodeURIComponent(normalizedUrl)}"
       alt="${img.alt || `Trang ${idx + 1}`}"
       class="manga-img"
-      loading="${idx < 3 ? 'eager' : 'lazy'}"
+      loading="${idx < 6 ? 'eager' : 'lazy'}"
       decoding="async"
     />
   </div>`

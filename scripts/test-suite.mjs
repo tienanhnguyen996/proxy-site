@@ -258,6 +258,7 @@ Nội dung chương 2 tiếp diễn...
     assert.strictEqual(data.isManga, true, 'TruyenQQ chapter must be flagged as manga');
     assert.ok(data.content.includes('manga-viewer'), 'Must include .manga-viewer container');
     assert.ok(data.content.includes('/api/proxy-image?url='), 'Must proxy image URLs');
+    assert.ok(!data.content.includes('manga-page-number'), 'Must NOT contain page number text between manga images');
     assert.ok(Array.isArray(data.chapters) && data.chapters.length > 500, `Expected 500+ chapters, got ${data.chapters?.length}`);
   });
 
