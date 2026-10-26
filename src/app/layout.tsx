@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Lora, Be_Vietnam_Pro, Literata } from "next/font/google";
 import "./globals.css";
 
@@ -27,6 +27,12 @@ const literata = Literata({
 export const metadata: Metadata = {
   title: "AetherRead | Clean Novel Reader",
   description: "A premium, ad-free web novel proxy reader designed for distraction-free reading.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

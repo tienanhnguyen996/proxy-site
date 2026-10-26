@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { getChapter, getBook, getLocalRulesForChapter, putBook, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalRule } from '@/lib/localdb';
 import { applyTextRules } from '@/lib/replace-utils';
 
-import { getNovelBaseUrl, sortChaptersAscending } from '@/lib/novel-utils';
+import { getNovelBaseUrl, sortChaptersAscending, deduplicateParagraphs } from '@/lib/novel-utils';
 
 interface ArticleData {
   title: string;
@@ -540,7 +540,7 @@ function ReaderView() {
 
           result = {
             title: chapter.title || 'Untitled',
-            content,
+            content: deduplicateParagraphs(content),
             excerpt: '',
             siteName: 'Local Upload',
             nextUrl: chapter.next_url,
@@ -573,6 +573,9 @@ function ReaderView() {
           }
         }
 
+        if (!result.isManga && result.content) {
+          result.content = deduplicateParagraphs(result.content);
+        }
         setData(result);
         saveToHistory(targetUrl, result.title || 'Untitled Chapter', result.siteName || '');
       } catch (err: unknown) {
@@ -1209,7 +1212,7 @@ function ReaderView() {
         }
         const result = await res.json();
         if (result.content) {
-          setTranslations(prev => ({ ...prev, [url]: result.content }));
+          setTranslations(prev => ({ ...prev, [url]: deduplicateParagraphs(result.content) }));
           setUnavailableTranslations(prev => {
             const next = { ...prev };
             delete next[url];
@@ -1980,17 +1983,16 @@ function ReaderView() {
           <div className="chapter-nav" style={{ alignItems: 'center' }}>
             {effectivePrevUrl ? (
               <button 
-                className="btn"
+                className="btn chapter-nav-btn"
                 onClick={() => handleChapterChange(effectivePrevUrl)}
-                style={{ minWidth: '90px' }}
               >
                 ◀ Prev
               </button>
             ) : (
               <button 
-                className="btn" 
+                className="btn chapter-nav-btn" 
                 disabled 
-                style={{ minWidth: '90px', opacity: 0.4, cursor: 'not-allowed' }}
+                style={{ opacity: 0.4, cursor: 'not-allowed' }}
               >
                 ◀ Prev
               </button>
@@ -2000,6 +2002,7 @@ function ReaderView() {
               <select
                 value={getCurrentChapterSelectValue()}
                 onChange={(e) => handleChapterChange(e.target.value)}
+                className="chapter-nav-select"
                 style={{
                   padding: '0.625rem 1rem',
                   borderRadius: '8px',
@@ -2009,7 +2012,6 @@ function ReaderView() {
                   fontSize: '0.875rem',
                   cursor: 'pointer',
                   outline: 'none',
-                  maxWidth: '180px',
                   textAlign: 'center',
                   fontWeight: 500
                 }}
@@ -2028,17 +2030,16 @@ function ReaderView() {
 
             {effectiveNextUrl ? (
               <button 
-                className="btn btn-primary"
+                className="btn btn-primary chapter-nav-btn"
                 onClick={() => handleChapterChange(effectiveNextUrl)}
-                style={{ minWidth: '90px' }}
               >
                 Next ▶
               </button>
             ) : (
               <button 
-                className="btn btn-primary" 
+                className="btn btn-primary chapter-nav-btn" 
                 disabled 
-                style={{ minWidth: '90px', opacity: 0.4, cursor: 'not-allowed' }}
+                style={{ opacity: 0.4, cursor: 'not-allowed' }}
               >
                 Next ▶
               </button>

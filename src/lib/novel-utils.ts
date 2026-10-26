@@ -131,3 +131,82 @@ export function sortChaptersAscending<T extends { url: string; title?: string }>
 
   return chapters;
 }
+
+/**
+ * Deduplicate repeated paragraphs or scrambled duplicate blocks often found in web novel scrapers.
+ * Preserves short dialogue / interjections unless they form part of a repeating block.
+ */
+/**
+ * Deduplicate repeated paragraphs or scrambled duplicate blocks often found in web novel scrapers.
+ * Preserves short dialogue / interjections unless they form part of a repeating block.
+ */
+export function deduplicateParagraphs(html: string): string {
+  if (!html || typeof html !== 'string') return html;
+  if (html.includes('manga-viewer') || html.includes('class="manga-img')) return html;
+
+  // Match all <p ...>...</p> tags
+  const pRegex = /<p\b[^>]*>([\s\S]*?)<\/p>/gi;
+  const matches: { full: string; inner: string; index: number; length: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = pRegex.exec(html)) !== null) {
+    matches.push({
+      full: m[0],
+      inner: m[1],
+      index: m.index,
+      length: m[0].length,
+    });
+  }
+
+  if (matches.length < 4) return html;
+
+  const getText = (str: string): string =>
+    str
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const paraTexts: string[] = matches.map((item) => getText(item.inner));
+  const seenTexts = new Set<string>();
+  const removeIndices = new Set<number>();
+
+  for (let i = 0; i < matches.length; i++) {
+    const text = paraTexts[i];
+    if (!text) continue;
+
+    // Substantial text (>= 30 characters) already seen earlier in chapter
+    if (text.length >= 30 && seenTexts.has(text)) {
+      removeIndices.add(i);
+      continue;
+    }
+
+    // Shorter text (< 30 characters) already seen, BUT adjacent to another duplicate
+    if (seenTexts.has(text)) {
+      const prevIsDupe = i > 0 && removeIndices.has(i - 1);
+      const nextText = i + 1 < paraTexts.length ? paraTexts[i + 1] : '';
+      const nextIsDupe = nextText ? seenTexts.has(nextText) : false;
+      if (prevIsDupe || nextIsDupe) {
+        removeIndices.add(i);
+        continue;
+      }
+    }
+
+    seenTexts.add(text);
+  }
+
+  if (removeIndices.size === 0) return html;
+
+  let lastEnd = 0;
+  let result = '';
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    result += html.slice(lastEnd, match.index);
+    if (!removeIndices.has(i)) {
+      result += match.full;
+    }
+    lastEnd = match.index + match.length;
+  }
+  result += html.slice(lastEnd);
+
+  return result;
+}

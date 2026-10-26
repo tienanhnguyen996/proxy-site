@@ -45,12 +45,28 @@ async function runAll() {
   // --------------------------------------------------------------------------
   console.log('📦 1. UNIT TESTS: Novel & Manga URL Utilities');
   // --------------------------------------------------------------------------
-  const { normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending } = await import('../src/lib/novel-utils.ts');
+  const { normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending, deduplicateParagraphs } = await import('../src/lib/novel-utils.ts');
 
   await test('normalizeUrl: strips trailing slashes and whitespace', () => {
     assert.strictEqual(normalizeUrl('  https://site.com/novel/  '), 'https://site.com/novel');
     assert.strictEqual(normalizeUrl('https://site.com/novel'), 'https://site.com/novel');
     assert.strictEqual(normalizeUrl(''), '');
+  });
+
+  await test('deduplicateParagraphs: removes repeated blocks while preserving normal dialogue', () => {
+    const rawHtml = `
+      <p>Đây là một đoạn văn dài mô tả trận chiến giữa hai cao thủ tiên môn trên đỉnh núi tuyết phong.</p>
+      <p>Cực kỳ hung hiểm và kịch liệt.</p>
+      <p>“Đúng vậy.”</p>
+      <p>Sau đó hai người bắt tay làm hòa và cùng nhau xuống núi.</p>
+      <p>Đây là một đoạn văn dài mô tả trận chiến giữa hai cao thủ tiên môn trên đỉnh núi tuyết phong.</p>
+      <p>Cực kỳ hung hiểm và kịch liệt.</p>
+      <p>“Đúng vậy.”</p>
+    `;
+    const cleaned = deduplicateParagraphs(rawHtml);
+    const countP = (h) => (h.match(/<p\b[^>]*>[\s\S]*?<\/p>/gi) || []).length;
+    assert.strictEqual(countP(cleaned), 4);
+    assert.ok(cleaned.includes('Sau đó hai người bắt tay làm hòa'));
   });
 
   await test('getNovelBaseUrl: handles TruyenFull novel/chapter URLs', () => {

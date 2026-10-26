@@ -431,6 +431,15 @@ a:hover {
 }
 
 /* Navigation buttons between chapters */
+
+.chapter-nav-btn {
+  min-width: 90px;
+}
+
+.chapter-nav-select {
+  max-width: 180px;
+}
+
 .chapter-nav {
   display: flex;
   justify-content: space-between;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
-import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending } from '@/lib/utils';
+import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending, deduplicateParagraphs } from '@/lib/utils';
 import { fetchHtmlWithBypass } from '@/lib/fetch-utils';
 
 export const preferredRegion = 'sin1';
@@ -96,6 +96,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
   const mode = searchParams.get('mode') === 'translated' ? 'translated' : 'raw';
+  const refresh = searchParams.get('refresh') === 'true' || searchParams.get('force') === 'true';
 
   if (!targetUrl) {
     return NextResponse.json(
