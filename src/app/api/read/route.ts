@@ -208,6 +208,8 @@ export async function GET(request: NextRequest) {
       const isManga = content ? (content.includes('manga-viewer') || content.includes('class="manga-img')) : false;
       if (isManga && content) {
         content = content.replace(/<span class="manga-page-number">.*?<\/span>\s*/gi, '');
+      } else if (content) {
+        content = deduplicateParagraphs(content);
       }
 
       let libraryChapters: { title: string; url: string }[] = [];
