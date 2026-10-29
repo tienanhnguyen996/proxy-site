@@ -245,3 +245,15 @@ export function deduplicateParagraphs(html: string): string {
 
   return result;
 }
+
+/**
+ * Cleans excessive non-breaking spaces and leading/trailing indentation from HTML paragraphs
+ * (common in raw novel sites like metruyenhotvn that insert 10-12 &nbsp; per paragraph).
+ */
+export function cleanParagraphSpacing(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/(<p[^>]*>)(?:[\s\u00a0]|&nbsp;|&#160;)+/gi, '$1')
+    .replace(/(?:[\s\u00a0]|&nbsp;|&#160;)+(<\/p>)/gi, '$1')
+    .replace(/<p[^>]*>(?:[\s\u00a0]|&nbsp;|&#160;)*<\/p>/gi, '');
+}

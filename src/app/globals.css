@@ -258,6 +258,19 @@ a:hover {
   letter-spacing: 0.05em;
 }
 
+.reader-novel-breadcrumb {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  background: var(--accent-soft);
+  border-radius: 6px;
+}
+
 .reader-title {
   font-size: 2.25rem;
   line-height: 1.2;
@@ -522,44 +535,117 @@ a:hover {
 @media (max-width: 600px) {
   /* Reduce container padding on mobile to maximize content width */
   .container {
-    padding: 0 0.75rem;
+    padding: 0 0.5rem;
   }
 
   /* Shorter header height and tighter gap on mobile */
   .header-inner {
-    height: 56px;
+    height: 52px;
     gap: 0.35rem;
   }
 
-  /* Make all buttons inside header smaller */
+  /* Make all buttons inside header smaller and maintain icon bounds */
   .header-inner .btn {
-    padding: 0.4rem 0.6rem;
-    font-size: 0.75rem;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.8rem;
     border-radius: 6px;
     gap: 0.2rem;
+    flex-shrink: 0;
   }
 
-  /* Adjust chapter dropdown to take less space on mobile */
+  /* Adjust chapter dropdown to take flexible space on mobile */
   .chapter-select {
-    max-width: 120px;
-    font-size: 0.75rem;
-    padding: 0.4rem 0.3rem;
+    flex: 1;
+    min-width: 0;
+    max-width: 190px;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.4rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
   }
 
   /* Shrink site title logo in header if displayed */
   .site-title-header {
-    max-width: 100px;
+    max-width: 120px;
     font-size: 0.85rem;
   }
 
   /* Make spacer smaller on loading/error headers */
   .header-spacer {
-    width: 30px;
+    width: 24px;
   }
 
   /* Tighter gap for header buttons */
   .header-actions {
     gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
+  /* Reader container and header margins on mobile */
+  .reader-container {
+    padding: 1.25rem 0.75rem 6rem 0.75rem;
+  }
+
+  .reader-header {
+    margin-bottom: 1.25rem;
+  }
+
+  .reader-novel-breadcrumb {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.5rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .reader-title {
+    font-size: 1.35rem;
+    line-height: 1.35;
+    margin-bottom: 0.75rem;
+  }
+
+  .reader-meta {
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+
+  .reader-meta span {
+    margin-left: 0 !important;
+    white-space: nowrap;
+  }
+
+  .reader-content {
+    line-height: 1.75;
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .reader-content p {
+    margin-bottom: 1.25rem;
+  }
+
+  .chapter-nav {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    gap: 0.5rem;
+  }
+
+  .chapter-nav-btn {
+    min-width: 65px;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.8rem;
+  }
+
+  .chapter-nav-select {
+    flex: 1;
+    min-width: 0;
+    max-width: 140px;
+    font-size: 0.8rem;
+    padding: 0.45rem 0.25rem;
   }
 }
 
@@ -567,11 +653,6 @@ a:hover {
   /* Hide text labels inside header buttons, showing only emojis/icons */
   .btn-text-hide-mobile {
     display: none;
-  }
-  
-  /* Even smaller dropdown for very narrow devices */
-  .chapter-select {
-    max-width: 90px;
   }
 }
 
@@ -747,6 +828,3 @@ a:hover {
     box-shadow: none;
   }
 }
-
-
-

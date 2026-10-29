@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { getChapter, getBook, getLocalRulesForChapter, putBook, getAllLocalRules, putLocalRule, deleteLocalRule, type LocalRule } from '@/lib/localdb';
 import { applyTextRules } from '@/lib/replace-utils';
 
-import { getNovelBaseUrl, sortChaptersAscending, deduplicateParagraphs } from '@/lib/novel-utils';
+import { getNovelBaseUrl, sortChaptersAscending, deduplicateParagraphs, cleanParagraphSpacing } from '@/lib/novel-utils';
 
 interface ArticleData {
   title: string;
@@ -1892,7 +1892,23 @@ function ReaderView() {
                 <span style={{ marginLeft: '8px', padding: '2px 6px', background: 'var(--border)', color: 'var(--meta-fg)', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>Raw · no translation yet</span>
               ) : null}
             </div>
-            <h1 className="reader-title">{data.title}</h1>
+            {(() => {
+              const novelPrefix = data.novelTitle;
+              let displayChapterTitle = data.title;
+              if (novelPrefix && displayChapterTitle.toLowerCase().startsWith(novelPrefix.toLowerCase())) {
+                displayChapterTitle = displayChapterTitle.slice(novelPrefix.length).replace(/^[\s\-–—:]+/, '');
+              }
+              return (
+                <>
+                  {novelPrefix && (
+                    <div className="reader-novel-breadcrumb">
+                      {novelPrefix}
+                    </div>
+                  )}
+                  <h1 className="reader-title">{displayChapterTitle || data.title}</h1>
+                </>
+              );
+            })()}
             {!data.originalUrl.startsWith('local://') && (
               <a href={data.originalUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.85rem', color: 'var(--meta-fg)' }}>
                 🌐 View Original Website
@@ -1913,7 +1929,7 @@ function ReaderView() {
               lineHeight: lineHeights[lineHeight],
               fontFamily: fontFamily === 'original' && data.originalFont ? data.originalFont : undefined
             }}
-            dangerouslySetInnerHTML={{ __html: translatedContent || data.content }}
+            dangerouslySetInnerHTML={{ __html: cleanParagraphSpacing(translatedContent || data.content) }}
           />
 
           {/* Additional loaded chapters for manga */}

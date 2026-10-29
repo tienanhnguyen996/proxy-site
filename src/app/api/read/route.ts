@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
-import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending, deduplicateParagraphs } from '@/lib/utils';
+import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending, deduplicateParagraphs, cleanParagraphSpacing } from '@/lib/utils';
 import { fetchHtmlWithBypass } from '@/lib/fetch-utils';
 
 export const preferredRegion = 'sin1';
@@ -431,7 +431,7 @@ export async function GET(request: NextRequest) {
       if (isManga && content) {
         content = content.replace(/<span class="manga-page-number">.*?<\/span>\s*/gi, '');
       } else if (content) {
-        content = deduplicateParagraphs(content);
+        content = cleanParagraphSpacing(deduplicateParagraphs(content));
       }
 
       let libraryChapters: { title: string; url: string }[] = [];
@@ -969,7 +969,9 @@ export async function GET(request: NextRequest) {
       ]);
       const allRules = [...globalRules, ...bookRules, ...chapterRules];
       if (allRules.length > 0 && content) {
-        content = applyReplaceRules(content, allRules);
+        content = cleanParagraphSpacing(deduplicateParagraphs(applyReplaceRules(content, allRules)));
+      } else if (content) {
+        content = cleanParagraphSpacing(deduplicateParagraphs(content));
       }
     }
 
