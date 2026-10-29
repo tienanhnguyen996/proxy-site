@@ -1,0 +1,16 @@
+2026-10-29 16:34:23.098: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-user\Default
+2026-10-29 16:34:23.098: [INFO] Profiles total count: 1
+2026-10-29 16:34:23.098: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-user\Default lastActive=null
+2026-10-29 16:34:23.098: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-user\Default
+2026-10-29 16:34:23.098: [INFO] VisibilityChanged: 0
+2026-10-29 16:34:23.132: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:34:23.132: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:34:23.132: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:34:23.132: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:34:23.134: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-10-29 16:34:24.106: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-10-29 16:34:24.112: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:34:24.116: [INFO] Primary account changed.
+2026-10-29 16:34:24.116: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-10-29 16:34:24.132: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:34:24.151: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3

@@ -1,0 +1,5 @@
+2026/10/29-23:34:25.489 1454 Creating DB C:\Users\tiena\proxy-site\.edge-tmp-user\Default\EdgeCoupons/coupons_data.db since it was missing.
+2026/10/29-23:34:25.500 1454 Reusing MANIFEST C:\Users\tiena\proxy-site\.edge-tmp-user\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/10/29-23:34:25.626 4c58 Level-0 table #5: started
+2026/10/29-23:34:25.629 4c58 Level-0 table #5: 683273 bytes OK
+2026/10/29-23:34:25.633 4c58 Delete type=0 #3

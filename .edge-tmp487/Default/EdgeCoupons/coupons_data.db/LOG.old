@@ -1,0 +1,6 @@
+2026/10/29-23:32:47.551 20a0 Reusing MANIFEST C:\Users\tiena\proxy-site\.edge-tmp487\Default\EdgeCoupons/coupons_data.db/MANIFEST-000001
+2026/10/29-23:32:47.552 20a0 Recovering log #10
+2026/10/29-23:32:47.553 20a0 Reusing old log C:\Users\tiena\proxy-site\.edge-tmp487\Default\EdgeCoupons/coupons_data.db/000010.log 
+2026/10/29-23:32:47.700 4a5c Level-0 table #14: started
+2026/10/29-23:32:47.704 4a5c Level-0 table #14: 683444 bytes OK
+2026/10/29-23:32:47.707 4a5c Delete type=0 #10

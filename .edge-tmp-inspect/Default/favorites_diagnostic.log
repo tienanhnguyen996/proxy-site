@@ -1,0 +1,161 @@
+2026-10-29 16:25:48.685: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:25:48.685: [INFO] Profiles total count: 1
+2026-10-29 16:25:48.685: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default lastActive=null
+2026-10-29 16:25:48.685: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:25:48.685: [INFO] VisibilityChanged: 0
+2026-10-29 16:25:48.716: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:25:48.716: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:25:48.716: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:25:48.716: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:25:48.718: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-10-29 16:25:50.766: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 0
+2026-10-29 16:25:50.771: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:25:50.775: [INFO] Primary account changed.
+2026-10-29 16:25:50.775: [INFO] OnPrimaryAccountChanged PrimaryAccountChangeEvent::Type::kSet
+2026-10-29 16:25:50.790: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:25:50.805: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.155: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:26:12.155: [INFO] Profiles total count: 1
+2026-10-29 16:26:12.155: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default lastActive=null
+2026-10-29 16:26:12.155: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:26:12.155: [INFO] VisibilityChanged: 0
+2026-10-29 16:26:12.182: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.183: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:26:12.183: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:26:12.183: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:26:12.183: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:26:12.197: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.237: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.616: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.618: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.620: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.623: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.625: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.626: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:12.628: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:12.630: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:13.365: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:13.371: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:13.903: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:14.414: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:14.416: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:14.418: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:16.452: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:16.454: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:16.664: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:30.449: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:26:30.449: [INFO] Profiles total count: 1
+2026-10-29 16:26:30.449: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default lastActive=null
+2026-10-29 16:26:30.449: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:26:30.449: [INFO] VisibilityChanged: 0
+2026-10-29 16:26:30.486: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:26:30.486: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:26:30.486: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:26:30.486: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:26:30.489: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.504: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.547: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.927: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.928: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.930: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.931: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.932: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.933: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:30.935: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:30.937: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:31.692: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:31.698: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:32.152: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:32.818: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:32.820: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:32.822: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:35.001: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:35.003: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:35.210: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:26:57.947: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:26:57.947: [INFO] Profiles total count: 1
+2026-10-29 16:26:57.947: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default lastActive=null
+2026-10-29 16:26:57.947: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:26:57.947: [INFO] VisibilityChanged: 0
+2026-10-29 16:26:57.984: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:26:57.984: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:26:57.984: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:26:57.984: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:26:57.987: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.002: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.041: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.410: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.412: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.414: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.419: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.421: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.422: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:26:58.424: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:58.426: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:59.526: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:26:59.532: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:00.085: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:00.763: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:00.766: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:00.769: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:02.396: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:02.398: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:02.608: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:36.974: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:27:36.974: [INFO] Profiles total count: 1
+2026-10-29 16:27:36.974: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default lastActive=null
+2026-10-29 16:27:36.974: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:27:36.974: [INFO] VisibilityChanged: 0
+2026-10-29 16:27:37.018: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.019: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:27:37.019: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:27:37.019: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:27:37.019: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:27:37.037: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.079: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.450: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.452: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.454: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.456: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.458: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.460: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:27:37.462: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:37.463: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:38.080: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:38.086: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:38.633: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:39.155: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:27:39.157: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:39.159: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:41.037: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:41.039: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:27:41.242: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:28:12.158: [INFO] CurrentProfilePath: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:28:12.158: [INFO] Profiles total count: 1
+2026-10-29 16:28:12.158: [INFO] Profile: name=Profile 1 path=C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default lastActive=null
+2026-10-29 16:28:12.158: [INFO] LastUsedProfileDir: C:\Users\tiena\proxy-site\.edge-tmp-inspect\Default
+2026-10-29 16:28:12.158: [INFO] VisibilityChanged: 0
+2026-10-29 16:28:12.196: [INFO] OnDoneLoading sync enabled: 0
+2026-10-29 16:28:12.196: [INFO] BookmarkModelLoaded, ids_reassigned: 0
+2026-10-29 16:28:12.196: [INFO] BookmarksLoadDropped droppedNodes=0
+2026-10-29 16:28:12.196: [INFO] BookmarksSnapshot Startup total=0 bar=0 other=0 mobile=0 showBar=0 showBarNTP=1
+2026-10-29 16:28:12.199: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.214: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.256: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.646: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.649: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.651: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.652: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.654: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.655: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 3
+2026-10-29 16:28:12.657: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:28:12.659: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:28:13.380: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:28:13.389: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:28:13.915: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:28:14.860: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 5
+2026-10-29 16:28:14.862: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:28:14.864: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:28:17.079: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:28:17.082: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6
+2026-10-29 16:28:17.286: [INFO] RecordSyncInitDuration has_sync_been_enabled: 0 state: 6

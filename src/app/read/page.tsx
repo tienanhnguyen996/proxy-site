@@ -76,6 +76,12 @@ function ReaderView() {
     }
     return 'normal';
   });
+  const [textAlign, setTextAlign] = useState<'justify' | 'left'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('aetherread_textAlign') as 'justify' | 'left') || 'justify';
+    }
+    return 'justify';
+  });
   
   // UI State
   const [showSettings, setShowSettings] = useState(false);
@@ -1635,6 +1641,25 @@ function ReaderView() {
               </div>
             </div>
 
+            {/* Text Alignment Selector */}
+            <div className="control-group">
+              <span className="control-label">Alignment</span>
+              <div className="control-buttons">
+                <button
+                  className={`control-btn ${textAlign === 'justify' ? 'active' : ''}`}
+                  onClick={() => updatePreference('textAlign', 'justify', (val) => setTextAlign(val as 'justify' | 'left'))}
+                >
+                  Justify
+                </button>
+                <button
+                  className={`control-btn ${textAlign === 'left' ? 'active' : ''}`}
+                  onClick={() => updatePreference('textAlign', 'left', (val) => setTextAlign(val as 'justify' | 'left'))}
+                >
+                  Left
+                </button>
+              </div>
+            </div>
+
             {/* Multi-Chapter Loading for Manga */}
             {data?.isManga && (
               <div className="control-group">
@@ -1936,6 +1961,7 @@ function ReaderView() {
             style={{
               fontSize: `${fontSizePx}px`,
               lineHeight: lineHeights[lineHeight],
+              textAlign: textAlign,
               fontFamily: fontFamily === 'original' && data.originalFont ? data.originalFont : undefined
             }}
             dangerouslySetInnerHTML={{ __html: cleanParagraphSpacing(translatedContent || data.content) }}

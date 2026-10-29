@@ -286,6 +286,10 @@ a:hover {
 
 .reader-content p {
   margin-bottom: 1.75rem;
+  text-align: inherit;
+  text-justify: inter-word;
+  hyphens: auto;
+  -webkit-hyphens: auto;
 }
 
 .reader-content blockquote {
