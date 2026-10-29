@@ -245,8 +245,15 @@ async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): 
         const title = a.textContent?.trim() || '';
         const href = a.getAttribute('href');
         if (href && title && !href.startsWith('javascript:') && href !== '#') {
-          const fullUrl = new URL(href, base).toString();
-          extracted.push({ title, url: normalizeUrl(fullUrl) });
+          const lower = href.toLowerCase();
+          if (lower.includes('/the-loai/') || lower.includes('/danh-sach/') || lower.includes('/tac-gia/')) continue;
+          if (
+            /(?:chuong|chap|chapter|tap)[-_]?\d+|\/\d+(?:\.html)?$/i.test(lower) ||
+            /(?:chương|chap|chapter|tập)\s*\d+/i.test(title)
+          ) {
+            const fullUrl = new URL(href, base).toString();
+            extracted.push({ title, url: normalizeUrl(fullUrl) });
+          }
         }
       }
       return extracted;
@@ -819,8 +826,15 @@ export async function GET(request: NextRequest) {
           const title = a.textContent?.trim() || '';
           const href = a.getAttribute('href');
           if (href && title && !href.startsWith('javascript:') && href !== '#') {
-            const fullUrl = new URL(href, baseUrl).toString();
-            extracted.push({ title, url: normalizeUrl(fullUrl) });
+            const lower = href.toLowerCase();
+            if (lower.includes('/the-loai/') || lower.includes('/danh-sach/') || lower.includes('/tac-gia/')) continue;
+            if (
+              /(?:chuong|chap|chapter|tap)[-_]?\d+|\/\d+(?:\.html)?$/i.test(lower) ||
+              /(?:chương|chap|chapter|tập)\s*\d+/i.test(title)
+            ) {
+              const fullUrl = new URL(href, baseUrl).toString();
+              extracted.push({ title, url: normalizeUrl(fullUrl) });
+            }
           }
         }
         return extracted;
