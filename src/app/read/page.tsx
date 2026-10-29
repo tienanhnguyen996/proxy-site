@@ -1426,29 +1426,18 @@ function ReaderView() {
 
       {/* Sync Banner */}
       {syncBanner && (
-        <div style={{
-          position: 'sticky',
-          top: '65px',
-          zIndex: 90,
-          background: 'var(--accent-soft)',
-          color: 'var(--accent)',
-          borderBottom: '1px solid var(--border)',
-          padding: '0.75rem 1rem',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          gap: '1rem',
-          fontSize: '0.9rem',
-          fontWeight: 500,
-          backdropFilter: 'blur(10px)',
-        }}>
-          <span>
-            You were reading <strong>{syncBanner.title}</strong> on another device.
+        <div className="sync-banner">
+          <span className="sync-banner-text">
+            You were reading <strong>{(() => {
+              const t = syncBanner.title;
+              const m = t.match(/^(?:.*?\s*[-–—]\s*)?(Chương\s+\d+.*|Chapter\s+\d+.*|Chap\s+\d+.*)$/i);
+              return m ? m[1] : t;
+            })()}</strong> on another device.
           </span>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div className="sync-banner-actions">
             <button 
               className="btn btn-primary" 
-              style={{ padding: '0.25rem 0.75rem', fontSize: '0.80rem' }}
+              style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
               onClick={() => {
                 const targetUrl = syncBanner.url;
                 setSyncBanner(null);
@@ -1459,7 +1448,7 @@ function ReaderView() {
             </button>
             <button 
               className="btn" 
-              style={{ padding: '0.25rem 0.5rem', fontSize: '0.80rem' }}
+              style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}
               onClick={() => setSyncBanner(null)}
             >
               Dismiss
