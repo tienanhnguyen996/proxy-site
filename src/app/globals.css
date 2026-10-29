@@ -535,7 +535,7 @@ a:hover {
 @media (max-width: 600px) {
   /* Reduce container padding on mobile to maximize content width */
   .container {
-    padding: 0 0.5rem;
+    padding: 0 1rem;
   }
 
   /* Shorter header height and tighter gap on mobile */
@@ -584,7 +584,22 @@ a:hover {
 
   /* Reader container and header margins on mobile */
   .reader-container {
-    padding: 1.25rem 0.75rem 6rem 0.75rem;
+    padding: 1.5rem 1.25rem 6rem 1.25rem;
+  }
+
+  .reader-container[data-margin="narrow"] {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .reader-container[data-margin="normal"] {
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+  }
+
+  .reader-container[data-margin="wide"] {
+    padding-left: 1.75rem;
+    padding-right: 1.75rem;
   }
 
   .reader-header {

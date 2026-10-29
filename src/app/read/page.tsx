@@ -1877,6 +1877,7 @@ function ReaderView() {
       <main style={{ flex: 1 }}>
         <article 
           className="reader-container" 
+          data-margin={readerWidth} 
           style={{ maxWidth: data.isManga ? (readerWidth === 'narrow' ? '760px' : readerWidth === 'normal' ? '980px' : '1180px') : readerWidths[readerWidth] }}
         >
           {/* Header metadata */}
