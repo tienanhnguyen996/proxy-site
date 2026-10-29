@@ -391,15 +391,16 @@ export async function GET(request: NextRequest) {
   }
 
   // Check database cache first (query chapters table only to avoid heavy JOIN and minimize payload size)
-  try {
-    const startTime = Date.now();
-    const cachedRows = await sql`
-      SELECT id, novel_url, url, title, content, next_url, prev_url, original_font,
-             EXISTS(SELECT 1 FROM translations t WHERE t.url = chapters.url) AS has_translation
-      FROM chapters 
-      WHERE url = ${normalizedUrl} 
-      LIMIT 1
-    `;
+  if (!refresh) {
+    try {
+      const startTime = Date.now();
+      const cachedRows = await sql`
+        SELECT id, novel_url, url, title, content, next_url, prev_url, original_font,
+               EXISTS(SELECT 1 FROM translations t WHERE t.url = chapters.url) AS has_translation
+        FROM chapters 
+        WHERE url = ${normalizedUrl} 
+        LIMIT 1
+      `;
     const dbDuration = Date.now() - startTime;
     console.log(`[DB Query Time] ${dbDuration}ms`);
     
@@ -437,9 +438,13 @@ export async function GET(request: NextRequest) {
         if (libRows.length > 0 && libRows[0].chapters_list) {
           const list = JSON.parse(libRows[0].chapters_list);
           if (Array.isArray(list)) {
-            libraryChapters = sortChaptersAscending(list);
+            const isCorrupted = list.some((c: { url?: string; title?: string }) => c.url?.endsWith('px') || c.title?.endsWith('px'));
+            if (!isCorrupted && list.length > 0) {
+              libraryChapters = sortChaptersAscending(list);
+            }
           }
-        } else if (novelUrl && !novelUrl.startsWith('local://')) {
+        }
+        if (libraryChapters.length === 0 && novelUrl && !novelUrl.startsWith('local://')) {
           // If the book hasn't been added to the library yet, attempt to load chapters from the novel overview page
           try {
             const overview = await fetchNovelOverview(novelUrl, normalizedUrl);
@@ -484,6 +489,7 @@ export async function GET(request: NextRequest) {
     }
   } catch (dbErr) {
     console.error('Database read error:', dbErr);
+  }
   }
 
   console.log(`[CACHE MISS] Chapter read: ${normalizedUrl}`);
@@ -713,6 +719,32 @@ export async function GET(request: NextRequest) {
       for (const select of selectElements) {
         const options = Array.from(select.querySelectorAll('option')) as HTMLOptionElement[];
         if (options.length < 2) continue;
+
+        // Skip configuration dropdowns (font size like 16px, colors like #fff, font families)
+        const hasCssValues = options.some((o) => {
+          const val = (o.getAttribute('value') || '').trim();
+          return (
+            /^\d+(?:px|pt|rem|em|%)$/i.test(val) ||
+            /^#|^rgb/i.test(val) ||
+            /serif|sans-serif|roboto|bookerly|minion/i.test(val)
+          );
+        });
+        if (hasCssValues) continue;
+
+        // Ensure options actually contain URLs or chapter paths
+        const hasUrlLikeValue = options.some((o) => {
+          const val = (o.getAttribute('value') || '').trim().toLowerCase();
+          return (
+            val.startsWith('http://') ||
+            val.startsWith('https://') ||
+            val.startsWith('/') ||
+            val.includes('.html') ||
+            val.includes('chuong') ||
+            val.includes('chap') ||
+            val.includes('chapter')
+          );
+        });
+        if (!hasUrlLikeValue) continue;
 
         let score = 0;
         const className = (select.className || '').toLowerCase();
