@@ -1893,11 +1893,19 @@ function ReaderView() {
               ) : null}
             </div>
             {(() => {
-              const novelPrefix = data.novelTitle;
+              let novelPrefix = data.novelTitle;
               let displayChapterTitle = data.title;
-              if (novelPrefix && displayChapterTitle.toLowerCase().startsWith(novelPrefix.toLowerCase())) {
+
+              if (!novelPrefix) {
+                const match = displayChapterTitle.match(/^(.*?)\s*[-–—]\s*(Chương\s+\d+.*|Chapter\s+\d+.*|Chap\s+\d+.*)$/i);
+                if (match) {
+                  novelPrefix = match[1].trim();
+                  displayChapterTitle = match[2].trim();
+                }
+              } else if (displayChapterTitle.toLowerCase().startsWith(novelPrefix.toLowerCase())) {
                 displayChapterTitle = displayChapterTitle.slice(novelPrefix.length).replace(/^[\s\-–—:]+/, '');
               }
+
               return (
                 <>
                   {novelPrefix && (
