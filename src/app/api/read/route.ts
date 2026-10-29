@@ -92,6 +92,214 @@ function extractMangaImages(doc: QueryableDoc, pageUrl: string): { url: string; 
   return result;
 }
 
+
+interface NovelOverviewResult {
+  chapters: { title: string; url: string }[];
+  novelTitle?: string;
+  author?: string;
+  coverUrl?: string;
+}
+
+function deobfuscateDomContent(document: Document, htmlText: string): void {
+  const classToAttr = new Map<string, string>();
+  const styleElements = Array.from(document.querySelectorAll('style'));
+  const ruleRegex = /\.([a-zA-Z0-9_-]+)::before\s*\{\s*content:\s*attr\(([^)]+)\);?\s*\}/g;
+
+  for (const styleEl of styleElements as Element[]) {
+    const css = styleEl.textContent || '';
+    let m;
+    while ((m = ruleRegex.exec(css)) !== null) {
+      classToAttr.set(m[1], m[2]);
+    }
+  }
+
+  // Check inline scripts for hidden shadow DOM content (e.g. metruyenhotvn var contentS = '...')
+  const scriptContentMatch = htmlText.match(/var\s+contentS\s*=\s*'([^']+)'/);
+  if (scriptContentMatch) {
+    const contentSHtml = scriptContentMatch[1];
+    const scriptStyleMatch = htmlText.match(/div\.innerHTML\s*=\s*'<style>([^<]+)<\/style>'/);
+    if (scriptStyleMatch) {
+      let m;
+      while ((m = ruleRegex.exec(scriptStyleMatch[1])) !== null) {
+        classToAttr.set(m[1], m[2]);
+      }
+    }
+
+    const host =
+      document.querySelector('.chapter-c') ||
+      document.querySelector('#chapter-c') ||
+      document.querySelector('#chapt-content') ||
+      document.querySelector('#chapter-content') ||
+      document.querySelector('.content_wrap') ||
+      document.querySelector('.reading-content') ||
+      document.body;
+
+    if (host) {
+      const pTagRegex = /<p\b([^>]*)>(.*?)<\/p>/gi;
+      let pMatch;
+      while ((pMatch = pTagRegex.exec(contentSHtml)) !== null) {
+        const pAttrs = pMatch[1];
+        let text = pMatch[2].replace(/<[^>]+>/g, '').trim();
+
+        if (!text) {
+          const clsMatch = pAttrs.match(/class\s*=\s*["']([^"']+)["']/i);
+          if (clsMatch) {
+            const cls = clsMatch[1].trim();
+            const attrName = classToAttr.get(cls);
+            if (attrName) {
+              const attrValMatch = new RegExp(`${attrName}\\s*=\\s*["']([^"']+)["']`, 'i').exec(pAttrs);
+              if (attrValMatch) {
+                text = attrValMatch[1].trim();
+              }
+            }
+          }
+        }
+
+        if (!text) {
+          const allAttrsRegex = /([a-zA-Z0-9_-]+)\s*=\s*["']([^"']+)["']/g;
+          let aMatch;
+          while ((aMatch = allAttrsRegex.exec(pAttrs)) !== null) {
+            const name = aMatch[1].toLowerCase();
+            const val = aMatch[2].trim();
+            if (!['class', 'style', 'id', 'onmousedown', 'onselectstart', 'oncopy', 'oncut'].includes(name) && val.length > 3) {
+              text = val;
+              break;
+            }
+          }
+        }
+
+        if (text) {
+          const newP = document.createElement('p');
+          newP.innerHTML = text;
+          host.appendChild(newP);
+        }
+      }
+    }
+  }
+
+  // De-obfuscate any <p> tags in the document that have empty textContent but text in attributes
+  const allPs = Array.from(document.querySelectorAll('p'));
+  for (const p of allPs as Element[]) {
+    if (!p.textContent?.trim()) {
+      let resolvedText = '';
+      const cls = p.className || '';
+      for (const singleCls of cls.split(/\s+/)) {
+        const attrName = classToAttr.get(singleCls);
+        if (attrName && p.hasAttribute(attrName)) {
+          resolvedText = p.getAttribute(attrName)?.trim() || '';
+          break;
+        }
+      }
+
+      if (!resolvedText) {
+        for (const a of Array.from(p.attributes) as Attr[]) {
+          const name = a.name.toLowerCase();
+          const val = a.value.trim();
+          if (!['class', 'style', 'id', 'onmousedown', 'onselectstart', 'oncopy', 'oncut', 'data-id'].includes(name) && val.length > 3) {
+            resolvedText = val;
+            break;
+          }
+        }
+      }
+
+      if (resolvedText) {
+        p.innerHTML = resolvedText;
+      }
+    }
+  }
+
+  // Remove noisy ads or shadow DOM containers that might interfere
+  const adSelectors = ['#top_ads_chapter_story', '#aan-banner', '.ads-chapter-box', '#content-metruyenhot'];
+  for (const sel of adSelectors) {
+    const el = document.querySelector(sel);
+    if (el && el.parentNode) {
+      el.parentNode.removeChild(el);
+    }
+  }
+}
+
+async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): Promise<NovelOverviewResult> {
+  const normNovelUrl = normalizeUrl(novelUrl);
+  try {
+    const novelRes = await fetchHtmlWithBypass(normNovelUrl);
+    if (!novelRes.ok || !novelRes.html) {
+      return { chapters: [] };
+    }
+
+    const { DOMParser } = await import('linkedom');
+    const novelDoc = new DOMParser().parseFromString(novelRes.html, 'text/html');
+
+    const novelTitle = novelDoc.querySelector('.story-details h1, h1.title, .books .title, h1')?.textContent?.trim() || undefined;
+    const author = novelDoc.querySelector('.author, [itemprop="author"], .info a[href*="tac-gia"]')?.textContent?.trim() || undefined;
+    const coverEl = novelDoc.querySelector('.books img, .book-info img, .info-holder img, img[itemprop="image"], .story-details img.lazyload, .story-details img');
+    const rawCover = coverEl?.getAttribute('data-src') || coverEl?.getAttribute('data-original') || coverEl?.getAttribute('src') || '';
+    const coverUrl = rawCover ? new URL(rawCover, normNovelUrl).toString() : undefined;
+
+    const chapterSelector =
+      '.works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a';
+
+    const extractLinks = (doc: QueryableDoc, base: string) => {
+      const anchors = Array.from(doc.querySelectorAll(chapterSelector)) as HTMLAnchorElement[];
+      const extracted: { title: string; url: string }[] = [];
+      for (const a of anchors) {
+        const title = a.textContent?.trim() || '';
+        const href = a.getAttribute('href');
+        if (href && title && !href.startsWith('javascript:') && href !== '#') {
+          const fullUrl = new URL(href, base).toString();
+          extracted.push({ title, url: normalizeUrl(fullUrl) });
+        }
+      }
+      return extracted;
+    };
+
+    const allChapters = extractLinks(novelDoc, normNovelUrl);
+
+    // Check for chapter range links or pagination (common on metruyenhotvn and similar sites)
+    const rangeLinks = Array.from(novelDoc.querySelectorAll('.chapter-ranges a, ul.pagination a, .pagination a')) as HTMLAnchorElement[];
+    const pageUrls = new Set<string>();
+
+    for (const a of rangeLinks) {
+      const href = a.getAttribute('href');
+      if (href && (href.includes('page=') || href.includes('/page/')) && !href.startsWith('javascript:') && href !== '#') {
+        const cleanUrl = new URL(href, normNovelUrl);
+        cleanUrl.hash = '';
+        pageUrls.add(cleanUrl.toString());
+      }
+    }
+
+    if (pageUrls.size > 0) {
+      const urlsToFetch = Array.from(pageUrls).slice(0, 25);
+      const pageResults = await Promise.all(
+        urlsToFetch.map(async (pUrl) => {
+          try {
+            const pRes = await fetchHtmlWithBypass(pUrl);
+            if (pRes.ok && pRes.html) {
+              const pDoc = new DOMParser().parseFromString(pRes.html, 'text/html');
+              return extractLinks(pDoc, normNovelUrl);
+            }
+          } catch {}
+          return [];
+        })
+      );
+
+      for (const res of pageResults) {
+        allChapters.push(...res);
+      }
+    }
+
+    const sortedChapters = sortChaptersAscending(allChapters);
+    return {
+      chapters: sortedChapters,
+      novelTitle,
+      author,
+      coverUrl,
+    };
+  } catch (err) {
+    console.error('Failed to resolve novel overview:', err);
+    return { chapters: [] };
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const targetUrl = searchParams.get('url');
@@ -140,6 +348,9 @@ export async function GET(request: NextRequest) {
         const row = translatedRows[0];
         // Apply replace rules
         const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+    let extraAuthor: string | undefined;
+    let extraCover: string | undefined;
+    let extraNovelTitle: string | undefined;
         const [globalRules, bookRules, chapterRules] = await Promise.all([
           getReplaceRules('global'),
           getReplaceRules('book', novelUrl),
@@ -198,6 +409,9 @@ export async function GET(request: NextRequest) {
 
       // Apply replace rules
       const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+    let extraAuthor: string | undefined;
+    let extraCover: string | undefined;
+    let extraNovelTitle: string | undefined;
       const [globalRules, bookRules, chapterRules] = await Promise.all([
         getReplaceRules('global'),
         getReplaceRules('book', novelUrl),
@@ -228,26 +442,9 @@ export async function GET(request: NextRequest) {
         } else if (novelUrl && !novelUrl.startsWith('local://')) {
           // If the book hasn't been added to the library yet, attempt to load chapters from the novel overview page
           try {
-            const novelRes = await fetchHtmlWithBypass(novelUrl);
-            if (novelRes.ok && novelRes.html) {
-              const { DOMParser } = await import('linkedom');
-              const novelDoc = new DOMParser().parseFromString(novelRes.html, 'text/html');
-              const links = Array.from(
-                novelDoc.querySelectorAll(
-                  '.works-chapter-item a, .works-chapter-list a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a'
-                )
-              ) as HTMLAnchorElement[];
-              for (const a of links) {
-                const title = a.textContent?.trim() || '';
-                const href = a.getAttribute('href');
-                if (href && title && !href.startsWith('javascript:') && href !== '#') {
-                  const fullUrl = new URL(href, novelUrl).toString();
-                  libraryChapters.push({ title, url: normalizeUrl(fullUrl) });
-                }
-              }
-              if (libraryChapters.length > 1) {
-                libraryChapters = sortChaptersAscending(libraryChapters);
-              }
+            const overview = await fetchNovelOverview(novelUrl, normalizedUrl);
+            if (overview.chapters.length > 0) {
+              libraryChapters = overview.chapters;
             }
           } catch (fetchErr) {
             console.error('Failed to resolve novel chapters on cache hit:', fetchErr);
@@ -301,6 +498,9 @@ export async function GET(request: NextRequest) {
 
   try {
     const novelUrl = normalizeUrl(getNovelBaseUrl(normalizedUrl));
+    let extraAuthor: string | undefined;
+    let extraCover: string | undefined;
+    let extraNovelTitle: string | undefined;
 
     const fetchResult = await fetchHtmlWithBypass(normalizedUrl);
     if (!fetchResult.ok || !fetchResult.html) {
@@ -578,7 +778,7 @@ export async function GET(request: NextRequest) {
       const parseChapterLinksFromDoc = (doc: QueryableDoc, baseUrl: string) => {
         const links = Array.from(
           doc.querySelectorAll(
-            '.works-chapter-item a, .works-chapter-list a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a'
+            '.works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a'
           )
         ) as HTMLAnchorElement[];
 
@@ -600,12 +800,13 @@ export async function GET(request: NextRequest) {
         chapters.push(...currentDocChapters);
       } else if (novelUrl && !novelUrl.startsWith('local://')) {
         try {
-          const novelRes = await fetchHtmlWithBypass(novelUrl);
-          if (novelRes.ok && novelRes.html) {
-            const novelDoc = new DOMParser().parseFromString(novelRes.html, 'text/html');
-            const fetchedChapters = parseChapterLinksFromDoc(novelDoc, novelUrl);
-            chapters.push(...fetchedChapters);
+          const overview = await fetchNovelOverview(novelUrl, normalizedUrl);
+          if (overview.chapters.length > 0) {
+            chapters.push(...overview.chapters);
           }
+          if (overview.author && !extraAuthor) extraAuthor = overview.author;
+          if (overview.coverUrl && !extraCover) extraCover = overview.coverUrl;
+          if (overview.novelTitle && !extraNovelTitle) extraNovelTitle = overview.novelTitle;
         } catch (novelFetchErr) {
           console.error('Failed to load chapters from novel page:', novelFetchErr);
         }
@@ -684,6 +885,9 @@ export async function GET(request: NextRequest) {
       articleTitle = rawH1.replace(/\s+/g, ' ').trim() || docTitle.trim() || 'Untitled Manga Chapter';
       siteName = new URL(normalizedUrl).hostname;
     } else {
+      // Deobfuscate anti-scraping / CSS attribute hidden text (e.g. metruyenhotvn.com)
+      deobfuscateDomContent(document as unknown as Document, htmlText);
+
       // Run Readability to extract the main content for text novels
       const reader = new Readability(document as unknown as Document);
       const article = reader.parse();
@@ -753,6 +957,9 @@ export async function GET(request: NextRequest) {
       originalFont,
       hasTranslation: false,
       isManga,
+      author: extraAuthor,
+      coverUrl: extraCover,
+      novelTitle: extraNovelTitle,
     });
   } catch (error: unknown) {
     console.error('Error in proxy read API:', error);

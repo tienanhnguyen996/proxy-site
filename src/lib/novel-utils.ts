@@ -107,9 +107,44 @@ export function getChapterNumber(url: string, title?: string): number | null {
 export function sortChaptersAscending<T extends { url: string; title?: string }>(chapters: T[]): T[] {
   if (!chapters || chapters.length <= 1) return chapters;
 
+  // Deduplicate by normalized URL first while preserving order
+  const seenUrls = new Set<string>();
+  const uniqueChapters: T[] = [];
+  for (const ch of chapters) {
+    const norm = normalizeUrl(ch.url);
+    if (!seenUrls.has(norm)) {
+      seenUrls.add(norm);
+      uniqueChapters.push(ch);
+    }
+  }
+
+  if (uniqueChapters.length <= 1) return uniqueChapters;
+
+  // Count how many items have valid numeric chapter numbers
+  let validCount = 0;
+  const withNumbers = uniqueChapters.map((ch, originalIndex) => {
+    const num = getChapterNumber(ch.url, ch.title);
+    if (num !== null) validCount++;
+    return { ch, num, originalIndex };
+  });
+
+  // If at least 60% of chapters have parseable chapter numbers, sort numerically ascending
+  if (validCount >= uniqueChapters.length * 0.6) {
+    withNumbers.sort((a, b) => {
+      if (a.num !== null && b.num !== null) {
+        if (a.num !== b.num) return a.num - b.num;
+        return a.originalIndex - b.originalIndex;
+      }
+      if (a.num !== null) return -1;
+      if (b.num !== null) return 1;
+      return a.originalIndex - b.originalIndex;
+    });
+    return withNumbers.map((x) => x.ch);
+  }
+
   let firstNum: number | null = null;
-  for (let i = 0; i < Math.min(5, chapters.length); i++) {
-    const n = getChapterNumber(chapters[i].url, chapters[i].title);
+  for (let i = 0; i < Math.min(5, uniqueChapters.length); i++) {
+    const n = getChapterNumber(uniqueChapters[i].url, uniqueChapters[i].title);
     if (n !== null) {
       firstNum = n;
       break;
@@ -117,8 +152,8 @@ export function sortChaptersAscending<T extends { url: string; title?: string }>
   }
 
   let lastNum: number | null = null;
-  for (let i = chapters.length - 1; i >= Math.max(0, chapters.length - 5); i--) {
-    const n = getChapterNumber(chapters[i].url, chapters[i].title);
+  for (let i = uniqueChapters.length - 1; i >= Math.max(0, uniqueChapters.length - 5); i--) {
+    const n = getChapterNumber(uniqueChapters[i].url, uniqueChapters[i].title);
     if (n !== null) {
       lastNum = n;
       break;
@@ -126,10 +161,10 @@ export function sortChaptersAscending<T extends { url: string; title?: string }>
   }
 
   if (firstNum !== null && lastNum !== null && firstNum > lastNum) {
-    return [...chapters].reverse();
+    return [...uniqueChapters].reverse();
   }
 
-  return chapters;
+  return uniqueChapters;
 }
 
 /**

@@ -19,6 +19,9 @@ interface ArticleData {
   originalFont?: string | null;
   hasTranslation?: boolean;
   isManga?: boolean;
+  author?: string;
+  coverUrl?: string;
+  novelTitle?: string;
 }
 
 function ReaderView() {
@@ -909,8 +912,8 @@ function ReaderView() {
     setSaving(true);
     try {
       const novelUrl = getNovelBaseUrl(data.originalUrl);
-      let novelTitle = data.siteName || 'New Novel';
-      if (data.title) {
+      let novelTitle = data.novelTitle || data.siteName || 'New Novel';
+      if (!data.novelTitle && data.title) {
         novelTitle = data.title.split('-')[0].trim().split('Chương')[0].trim().split('Chapter')[0].trim();
         if (!novelTitle) novelTitle = data.title;
       }
@@ -922,6 +925,8 @@ function ReaderView() {
           action: 'add',
           novel_url: novelUrl,
           title: novelTitle,
+          author: data.author || null,
+          cover_url: data.coverUrl || null,
           site_name: data.siteName,
           chapters_list: JSON.stringify(chapters || [])
         })

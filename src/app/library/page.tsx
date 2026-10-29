@@ -117,8 +117,8 @@ export default function LibraryPage() {
       const novelUrl = normalizeUrl(getNovelBaseUrl(inputUrl.trim()));
 
       // Infer title (remove chapter suffix if possible)
-      let novelTitle = scrapeData.siteName || 'New Novel';
-      if (scrapeData.title) {
+      let novelTitle = scrapeData.novelTitle || scrapeData.siteName || 'New Novel';
+      if (!scrapeData.novelTitle && scrapeData.title) {
         let cleaned = scrapeData.title.split('-')[0].trim();
         cleaned = cleaned.replace(/(?:chương|chap|chapter|tập)\s+.*$/i, '').trim();
         novelTitle = cleaned || scrapeData.title;
@@ -132,6 +132,8 @@ export default function LibraryPage() {
           action: 'add',
           novel_url: novelUrl,
           title: novelTitle,
+          author: scrapeData.author || null,
+          cover_url: scrapeData.coverUrl || null,
           site_name: scrapeData.siteName || new URL(inputUrl).hostname,
           chapters_list: JSON.stringify(chaptersList)
         })

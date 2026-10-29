@@ -148,6 +148,19 @@ async function runAll() {
     const ascSorted = sortChaptersAscending(asc);
     assert.strictEqual(ascSorted[0].title, 'Chương 1');
     assert.strictEqual(ascSorted[ascSorted.length - 1].title, 'Chương 110');
+
+    const metruyen = [
+      { title: 'Chương 825', url: 'https://metruyenhotvn.com/thien-co-dien/chuong-825/' },
+      { title: 'Chương 824', url: 'https://metruyenhotvn.com/thien-co-dien/chuong-824/' },
+      { title: 'Chương 1', url: 'https://metruyenhotvn.com/thien-co-dien/chuong-1/' },
+      { title: 'Chương 2', url: 'https://metruyenhotvn.com/thien-co-dien/chuong-2/' },
+      { title: 'Chương 472', url: 'https://metruyenhotvn.com/thien-co-dien/chuong-472/' },
+    ];
+    const metruyenSorted = sortChaptersAscending(metruyen);
+    assert.strictEqual(metruyenSorted[0].title, 'Chương 1');
+    assert.strictEqual(metruyenSorted[1].title, 'Chương 2');
+    assert.strictEqual(metruyenSorted[2].title, 'Chương 472');
+    assert.strictEqual(metruyenSorted[metruyenSorted.length - 1].title, 'Chương 825');
   });
 
   // --------------------------------------------------------------------------
