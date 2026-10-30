@@ -125,53 +125,74 @@ function deobfuscateDomContent(document: Document, htmlText: string): void {
       }
     }
 
-    const host =
-      document.querySelector('.chapter-c') ||
-      document.querySelector('#chapter-c') ||
-      document.querySelector('#chapt-content') ||
-      document.querySelector('#chapter-content') ||
-      document.querySelector('.content_wrap') ||
-      document.querySelector('.reading-content') ||
-      document.body;
+    // Find the shadow DOM host element where contentS was attached
+    let shadowHost = document.querySelector('#content-metruyenhot');
+    if (!shadowHost) {
+      const hostMatch = htmlText.match(/document\.querySelector\(\s*['"]([^'"]+)['"]\s*\)[\s\S]*?attachShadow/);
+      if (hostMatch) {
+        shadowHost = document.querySelector(hostMatch[1]);
+      }
+    }
 
-    if (host) {
-      const pTagRegex = /<p\b([^>]*)>(.*?)<\/p>/gi;
-      let pMatch;
-      while ((pMatch = pTagRegex.exec(contentSHtml)) !== null) {
-        const pAttrs = pMatch[1];
-        let text = pMatch[2].replace(/<[^>]+>/g, '').trim();
+    const pTagRegex = /<p\b([^>]*)>(.*?)<\/p>/gi;
+    let pMatch;
+    const newPs: Element[] = [];
+    while ((pMatch = pTagRegex.exec(contentSHtml)) !== null) {
+      const pAttrs = pMatch[1];
+      let text = pMatch[2].replace(/<[^>]+>/g, '').trim();
 
-        if (!text) {
-          const clsMatch = pAttrs.match(/class\s*=\s*["']([^"']+)["']/i);
-          if (clsMatch) {
-            const cls = clsMatch[1].trim();
-            const attrName = classToAttr.get(cls);
-            if (attrName) {
-              const attrValMatch = new RegExp(`${attrName}\\s*=\\s*["']([^"']+)["']`, 'i').exec(pAttrs);
-              if (attrValMatch) {
-                text = attrValMatch[1].trim();
-              }
+      if (!text) {
+        const clsMatch = pAttrs.match(/class\s*=\s*["']([^"']+)["']/i);
+        if (clsMatch) {
+          const cls = clsMatch[1].trim();
+          const attrName = classToAttr.get(cls);
+          if (attrName) {
+            const attrValMatch = new RegExp(`${attrName}\\s*=\\s*["']([^"']+)["']`, 'i').exec(pAttrs);
+            if (attrValMatch) {
+              text = attrValMatch[1].trim();
             }
           }
         }
+      }
 
-        if (!text) {
-          const allAttrsRegex = /([a-zA-Z0-9_-]+)\s*=\s*["']([^"']+)["']/g;
-          let aMatch;
-          while ((aMatch = allAttrsRegex.exec(pAttrs)) !== null) {
-            const name = aMatch[1].toLowerCase();
-            const val = aMatch[2].trim();
-            if (!['class', 'style', 'id', 'onmousedown', 'onselectstart', 'oncopy', 'oncut'].includes(name) && val.length > 3) {
-              text = val;
-              break;
-            }
+      if (!text) {
+        const allAttrsRegex = /([a-zA-Z0-9_-]+)\s*=\s*["']([^"']+)["']/g;
+        let aMatch;
+        while ((aMatch = allAttrsRegex.exec(pAttrs)) !== null) {
+          const name = aMatch[1].toLowerCase();
+          const val = aMatch[2].trim();
+          if (!['class', 'style', 'id', 'onmousedown', 'onselectstart', 'oncopy', 'oncut'].includes(name) && val.length > 3) {
+            text = val;
+            break;
           }
         }
+      }
 
-        if (text) {
-          const newP = document.createElement('p');
-          newP.innerHTML = text;
-          host.appendChild(newP);
+      if (text) {
+        const newP = document.createElement('p');
+        newP.innerHTML = text;
+        newPs.push(newP);
+      }
+    }
+
+    if (shadowHost && shadowHost.parentNode) {
+      for (const newP of newPs) {
+        shadowHost.parentNode.insertBefore(newP, shadowHost);
+      }
+      shadowHost.parentNode.removeChild(shadowHost);
+    } else {
+      const fallbackHost =
+        document.querySelector('.chapter-c') ||
+        document.querySelector('#chapter-c') ||
+        document.querySelector('#chapt-content') ||
+        document.querySelector('#chapter-content') ||
+        document.querySelector('.content_wrap') ||
+        document.querySelector('.reading-content') ||
+        document.body;
+
+      if (fallbackHost) {
+        for (const newP of newPs) {
+          fallbackHost.appendChild(newP);
         }
       }
     }
