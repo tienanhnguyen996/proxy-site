@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sql, getReplaceRules, applyReplaceRules } from '@/lib/db';
-import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, sortChaptersAscending, deduplicateParagraphs, cleanParagraphSpacing } from '@/lib/utils';
+import { getUrlId, normalizeUrl, getNovelBaseUrl, inferPrevNextFromUrl, getChapterNumber, sortChaptersAscending, deduplicateParagraphs, cleanParagraphSpacing } from '@/lib/utils';
 import { fetchHtmlWithBypass } from '@/lib/fetch-utils';
 
 export const preferredRegion = 'sin1';
@@ -255,6 +255,155 @@ async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): 
     const coverEl = novelDoc.querySelector('.book-detail__cover img, .books img, .book-info img, .info-holder img, img[itemprop="image"], .story-details img.lazyload, .story-details img, img[src*="cover"], img[src*="covers"]');
     const rawCover = coverEl?.getAttribute('data-src') || coverEl?.getAttribute('data-original') || coverEl?.getAttribute('src') || '';
     const coverUrl = rawCover ? new URL(rawCover, normNovelUrl).toString() : undefined;
+
+    // Specialized full chapter loader for sstruyen.pics using its backend API
+    if (normNovelUrl.includes('sstruyen')) {
+      const novelIdMatch = novelRes.html.match(/novelId[\\"]*:\s*(\d+)/i);
+      const novelId = novelIdMatch ? novelIdMatch[1] : null;
+      const slugMatch = normNovelUrl.match(/\/truyen\/([^/]+)/);
+      const slug = slugMatch ? slugMatch[1] : '';
+
+      if (novelId) {
+        try {
+          const browserHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Referer': 'https://sstruyen.pics/'
+          };
+
+          const firstRes = await fetch(`https://api.sstruyen.pics/novels/${novelId}/chapters?page=1&limit=50&sort=asc`, {
+            headers: browserHeaders,
+            signal: AbortSignal.timeout(6000)
+          });
+
+          if (firstRes.ok) {
+            const firstData = await firstRes.json();
+            const total = firstData.total || 0;
+            const totalPages = Math.ceil(total / 50);
+
+            const sstruyenChapters: { title: string; url: string }[] = [];
+            if (Array.isArray(firstData.chapters)) {
+              for (const ch of firstData.chapters) {
+                sstruyenChapters.push({
+                  title: ch.name,
+                  url: normalizeUrl(`https://sstruyen.pics/doc-truyen/${slug}-${ch.slug}-${ch.id}`)
+                });
+              }
+            }
+
+            for (let p = 2; p <= totalPages; p += 5) {
+              const batch = [];
+              for (let b = p; b < p + 5 && b <= totalPages; b++) {
+                batch.push(
+                  fetch(`https://api.sstruyen.pics/novels/${novelId}/chapters?page=${b}&limit=50&sort=asc`, {
+                    headers: browserHeaders,
+                    signal: AbortSignal.timeout(6000)
+                  })
+                    .then(r => r.ok ? r.json() : null)
+                    .catch(() => null)
+                );
+              }
+              const results = await Promise.all(batch);
+              for (const r of results) {
+                if (r && Array.isArray(r.chapters)) {
+                  for (const ch of r.chapters) {
+                    sstruyenChapters.push({
+                      title: ch.name,
+                      url: normalizeUrl(`https://sstruyen.pics/doc-truyen/${slug}-${ch.slug}-${ch.id}`)
+                    });
+                  }
+                }
+              }
+            }
+
+            if (sstruyenChapters.length > 0) {
+              return {
+                chapters: sortChaptersAscending(sstruyenChapters),
+                novelTitle,
+                author,
+                coverUrl,
+              };
+            }
+          }
+        } catch (sErr) {
+          console.warn('Failed to fetch from sstruyen API, falling back to DOM scraping:', sErr);
+        }
+      }
+    }
+
+    // Specialized chapter loader for webnovel.vn using its AJAX endpoint
+    if (normNovelUrl.includes('webnovel.vn')) {
+      const storyIdMatch = novelRes.html.match(/var\s+story_id\s*=\s*(\d+)/i);
+      const storyId = storyIdMatch ? storyIdMatch[1] : null;
+      const slugMatch = normNovelUrl.match(/\/([^/]+)\/?$/);
+      const slug = slugMatch ? slugMatch[1] : 'story';
+      const maxPageMatch = novelRes.html.match(/data-max="(\d+)"/) || novelRes.html.match(/max="(\d+)"/);
+      const maxPage = maxPageMatch ? parseInt(maxPageMatch[1], 10) : 1;
+
+      if (storyId) {
+        try {
+          const currentChapNum = currentTargetUrl ? getChapterNumber(currentTargetUrl) : null;
+          const targetPage = currentChapNum ? Math.ceil(currentChapNum / 20) : 1;
+
+          const pageSet = new Set<number>();
+          if (maxPage <= 25) {
+            for (let p = 1; p <= maxPage; p++) pageSet.add(p);
+          } else {
+            for (let p = 1; p <= Math.min(5, maxPage); p++) pageSet.add(p);
+            for (let p = Math.max(1, targetPage - 4); p <= Math.min(maxPage, targetPage + 4); p++) pageSet.add(p);
+            for (let p = Math.max(1, maxPage - 3); p <= maxPage; p++) pageSet.add(p);
+          }
+
+          const pagesToFetch = Array.from(pageSet).slice(0, 25);
+          const results = await Promise.all(
+            pagesToFetch.map(p =>
+              fetch('https://webnovel.vn/ajax', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'X-Requested-With': 'XMLHttpRequest',
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                },
+                body: new URLSearchParams({
+                  story_id: storyId,
+                  page: String(p),
+                  slug: slug,
+                  type: 'list_chapter'
+                }).toString(),
+                signal: AbortSignal.timeout(6000)
+              })
+                .then(r => r.ok ? r.json() : null)
+                .catch(() => null)
+            )
+          );
+
+          const webnovelChapters: { title: string; url: string }[] = [];
+          for (const r of results) {
+            if (r && r.chap_list) {
+              const regex = /<a\b[^>]*href="([^"]+)"[^>]*title="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+              let m;
+              while ((m = regex.exec(r.chap_list)) !== null) {
+                const href = m[1];
+                let title = m[2];
+                title = title.split(/\s*\|\s*/)[0].split(/\s+[-–—]\s+[^-–—]+$/)[0].trim();
+                webnovelChapters.push({ title, url: normalizeUrl(href) });
+              }
+            }
+          }
+
+          if (webnovelChapters.length > 0) {
+            return {
+              chapters: sortChaptersAscending(webnovelChapters),
+              novelTitle,
+              author,
+              coverUrl,
+            };
+          }
+        } catch (wErr) {
+          console.warn('Failed to fetch from webnovel AJAX, falling back to DOM scraping:', wErr);
+        }
+      }
+    }
 
     const chapterSelector =
       'nav[aria-label="Danh sách chương"] a, nav[aria-label="Chương mới cập nhật"] a, li[itemtype*="Chapter"] a, a[href*="/doc-truyen/"], .works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a';
