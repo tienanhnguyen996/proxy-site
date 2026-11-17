@@ -21,11 +21,18 @@ export function getNovelBaseUrl(chapterUrl: string): string {
       if (match) return `${url.origin}/fiction/${match[1]}/${match[2]}`;
     }
 
+    if (url.hostname.includes('sstruyen')) {
+      const match = url.pathname.match(/^\/doc-truyen\/(.*?)[-_](?:chap|chuong|chapter|tap)[-_]\d+(?:[-_]\d+)?/i);
+      if (match) {
+        return `${url.origin}/truyen/${match[1]}`;
+      }
+    }
+
     const paths = url.pathname.split('/').filter(Boolean);
     if (paths.length > 0) {
       const last = paths[paths.length - 1];
       // Check for embedded chapter suffix like '-chap-123' or '-chuong-123' or '_chap_123'
-      const matchEmbedded = last.match(/^(.*?)[-_](?:chap|chuong|chapter|tap)[-_]?\d+(?:\.html)?$/i);
+      const matchEmbedded = last.match(/^(.*?)[-_](?:chap|chuong|chapter|tap)[-_]?\d+(?:[-_]\d+)?(?:\.html)?$/i);
       if (matchEmbedded && matchEmbedded[1]) {
         const novelSegment = matchEmbedded[1];
         const basePaths = [...paths.slice(0, -1), novelSegment];

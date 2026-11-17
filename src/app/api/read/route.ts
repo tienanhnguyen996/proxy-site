@@ -250,31 +250,39 @@ async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): 
     const { DOMParser } = await import('linkedom');
     const novelDoc = new DOMParser().parseFromString(novelRes.html, 'text/html');
 
-    const novelTitle = novelDoc.querySelector('.story-details h1, h1.title, .books .title, h1')?.textContent?.trim() || undefined;
-    const author = novelDoc.querySelector('.author, [itemprop="author"], .info a[href*="tac-gia"]')?.textContent?.trim() || undefined;
-    const coverEl = novelDoc.querySelector('.books img, .book-info img, .info-holder img, img[itemprop="image"], .story-details img.lazyload, .story-details img');
+    const novelTitle = novelDoc.querySelector('.story-details h1, h1.title, .books .title, h1')?.textContent?.replace(/\s*\|.*$|\s*[-–—]\s*SSTruyen.*$/i, '')?.trim() || undefined;
+    const author = novelDoc.querySelector('.author, [itemprop="author"], .info a[href*="tac-gia"], a[href*="/tac-gia/"], .book-detail a[href*="/tac-gia/"]')?.textContent?.trim() || undefined;
+    const coverEl = novelDoc.querySelector('.book-detail__cover img, .books img, .book-info img, .info-holder img, img[itemprop="image"], .story-details img.lazyload, .story-details img, img[src*="cover"], img[src*="covers"]');
     const rawCover = coverEl?.getAttribute('data-src') || coverEl?.getAttribute('data-original') || coverEl?.getAttribute('src') || '';
     const coverUrl = rawCover ? new URL(rawCover, normNovelUrl).toString() : undefined;
 
     const chapterSelector =
-      '.works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a';
+      'nav[aria-label="Danh sách chương"] a, nav[aria-label="Chương mới cập nhật"] a, li[itemtype*="Chapter"] a, a[href*="/doc-truyen/"], .works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a';
 
     const extractLinks = (doc: QueryableDoc, base: string) => {
       const anchors = Array.from(doc.querySelectorAll(chapterSelector)) as HTMLAnchorElement[];
       const extracted: { title: string; url: string }[] = [];
       for (const a of anchors) {
-        const title = a.textContent?.trim() || '';
+        let title = a.textContent?.trim() || '';
         const href = a.getAttribute('href');
-        if (href && title && !href.startsWith('javascript:') && href !== '#') {
-          const lower = href.toLowerCase();
-          if (lower.includes('/the-loai/') || lower.includes('/danh-sach/') || lower.includes('/tac-gia/')) continue;
-          if (
-            /(?:chuong|chap|chapter|tap)[-_]?\d+|\/\d+(?:\.html)?$/i.test(lower) ||
-            /(?:chương|chap|chapter|tập)\s*\d+/i.test(title)
-          ) {
-            const fullUrl = new URL(href, base).toString();
-            extracted.push({ title, url: normalizeUrl(fullUrl) });
+        if (!href || !title || href.startsWith('javascript:') || href === '#') continue;
+        const lowerTitle = title.toLowerCase();
+        if (lowerTitle === 'đọc ngay' || lowerTitle === 'doc ngay') continue;
+        const lower = href.toLowerCase();
+        if (lower.includes('/the-loai/') || lower.includes('/danh-sach/') || lower.includes('/tac-gia/')) continue;
+        if (
+          /(?:chuong|chap|chapter|tap)[-_]?\d+|\/\d+(?:\.html)?$/i.test(lower) ||
+          /(?:chương|chap|chapter|tập)\s*\d+/i.test(title)
+        ) {
+          title = title.replace(/\s+/g, ' ').trim();
+          const titleAttr = a.getAttribute('title');
+          if (titleAttr && titleAttr.includes('Chương ')) {
+            title = titleAttr.split(/\s*\|\s*/)[0].split(/\s+[-–—]\s+[^-–—]+$/)[0].trim();
+          } else if (/^(\d+)\s+(.+)$/.test(title)) {
+            title = title.replace(/^(\d+)\s+(.+)$/, 'Chương $1: $2');
           }
+          const fullUrl = new URL(href, base).toString();
+          extracted.push({ title, url: normalizeUrl(fullUrl) });
         }
       }
       return extracted;
@@ -283,15 +291,18 @@ async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): 
     const allChapters = extractLinks(novelDoc, normNovelUrl);
 
     // Check for chapter range links or pagination (common on metruyenhotvn and similar sites)
-    const rangeLinks = Array.from(novelDoc.querySelectorAll('.chapter-ranges a, ul.pagination a, .pagination a')) as HTMLAnchorElement[];
+    const rangeLinks = Array.from(novelDoc.querySelectorAll('.chapter-ranges a, ul.pagination a, .pagination a, [class*="pagination"] a')) as HTMLAnchorElement[];
     const pageUrls = new Set<string>();
 
     for (const a of rangeLinks) {
       const href = a.getAttribute('href');
-      if (href && (href.includes('page=') || href.includes('/page/')) && !href.startsWith('javascript:') && href !== '#') {
-        const cleanUrl = new URL(href, normNovelUrl);
-        cleanUrl.hash = '';
-        pageUrls.add(cleanUrl.toString());
+      if (href && !href.startsWith('javascript:') && href !== '#') {
+        const cleanHref = href.toLowerCase();
+        if (cleanHref.includes('page=') || cleanHref.includes('/page/') || /\/\d+\/?(?:#.*)?$/.test(cleanHref)) {
+          const cleanUrl = new URL(href, normNovelUrl);
+          cleanUrl.hash = '';
+          pageUrls.add(cleanUrl.toString());
+        }
       }
     }
 
@@ -838,7 +849,7 @@ export async function GET(request: NextRequest) {
       const parseChapterLinksFromDoc = (doc: QueryableDoc, baseUrl: string) => {
         const links = Array.from(
           doc.querySelectorAll(
-            '.works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a'
+            'nav[aria-label="Danh sách chương"] a, nav[aria-label="Chương mới cập nhật"] a, li[itemtype*="Chapter"] a, a[href*="/doc-truyen/"], .works-chapter-item a, .works-chapter-list a, .list-chap a, .list-chap li a, .list-chapter a, .chapter-list a, .list-chapters a, div.list_chapter a, ul.list-chapters li a, .show-chapter-list a, #list-chapter a, .chapter-list-inner a'
           )
         ) as HTMLAnchorElement[];
 
@@ -863,19 +874,53 @@ export async function GET(request: NextRequest) {
 
       // Check if current document already has chapter links (e.g. if targetUrl itself is novel overview page)
       const currentDocChapters = parseChapterLinksFromDoc(document, normalizedUrl);
-      if (currentDocChapters.length > 0) {
+      if (currentDocChapters.length >= 5) {
         chapters.push(...currentDocChapters);
       } else if (novelUrl && !novelUrl.startsWith('local://')) {
         try {
           const overview = await fetchNovelOverview(novelUrl, normalizedUrl);
           if (overview.chapters.length > 0) {
             chapters.push(...overview.chapters);
+          } else if (currentDocChapters.length > 0) {
+            chapters.push(...currentDocChapters);
           }
           if (overview.author && !extraAuthor) extraAuthor = overview.author;
           if (overview.coverUrl && !extraCover) extraCover = overview.coverUrl;
           if (overview.novelTitle && !extraNovelTitle) extraNovelTitle = overview.novelTitle;
         } catch (novelFetchErr) {
           console.error('Failed to load chapters from novel page:', novelFetchErr);
+          if (currentDocChapters.length > 0) {
+            chapters.push(...currentDocChapters);
+          }
+        }
+      } else if (currentDocChapters.length > 0) {
+        chapters.push(...currentDocChapters);
+      }
+
+      // Extract metadata from JSON-LD on the chapter page if not already populated
+      if (!extraNovelTitle || !extraAuthor || !extraCover) {
+        const jsonLdScripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+        for (const s of jsonLdScripts as Element[]) {
+          try {
+            const ld = JSON.parse(s.textContent || '');
+            if (!extraNovelTitle) {
+              if (ld['@type'] === 'BreadcrumbList' && Array.isArray(ld.itemListElement) && ld.itemListElement.length >= 2) {
+                const novelItem = ld.itemListElement[1];
+                if (novelItem && novelItem.name && novelItem.name !== 'Trang chủ') {
+                  extraNovelTitle = novelItem.name;
+                }
+              }
+            }
+            if (ld['@type'] === 'Article' || ld['@type'] === 'NewsArticle' || ld['@type'] === 'Book') {
+              if (!extraAuthor && ld.author) {
+                extraAuthor = typeof ld.author === 'string' ? ld.author : ld.author.name;
+              }
+              if (!extraCover && ld.image) {
+                const img = Array.isArray(ld.image) ? ld.image[0] : ld.image;
+                if (typeof img === 'string') extraCover = img;
+              }
+            }
+          } catch {}
         }
       }
 
@@ -955,21 +1000,71 @@ export async function GET(request: NextRequest) {
       // Deobfuscate anti-scraping / CSS attribute hidden text (e.g. metruyenhotvn.com)
       deobfuscateDomContent(document as unknown as Document, htmlText);
 
+      // Remove footer boilerplate, error report boxes, or ad links (e.g. sstruyen, webnovel)
+      const proseFooters = document.querySelectorAll('.wrapper.prose div, .prose div, #chapter-c .unlock__full, #chapter-c .unlock__chapter');
+      for (const f of Array.from(proseFooters) as Element[]) {
+        if (f.textContent?.includes('báo lỗi') || f.textContent?.includes('đăng nhập') || f.textContent?.includes('mật khẩu') || f.textContent?.includes('Mở chương')) {
+          f.parentNode?.removeChild(f);
+        }
+      }
+
+      // Remove promotional cross-links
+      const promoLinks = document.querySelectorAll('p a[href*="utm_source=webnovel"], p a[href*="utm_medium=internal"]');
+      for (const pl of Array.from(promoLinks) as Element[]) {
+        const p = pl.closest('p');
+        if (p && p.parentNode) {
+          p.parentNode.removeChild(p);
+        }
+      }
+
+      // Check if Webnovel chapter is locked behind coin paywall
+      const isWebnovelLocked =
+        document.querySelector('#click-to-show, .unlock__chapter, .unlock__full') !== null ||
+        htmlText.includes('window.IS_LOCKED_CHAPTER = true');
+
       // Run Readability to extract the main content for text novels
       const reader = new Readability(document as unknown as Document);
       const article = reader.parse();
 
-      if (!article) {
+      if (!article && !isWebnovelLocked) {
         return NextResponse.json(
           { error: 'Could not extract clean text from this page. Try reading another chapter.' },
           { status: 422 }
         );
       }
 
-      content = article.content || '';
-      articleTitle = article.title || 'Untitled';
-      excerpt = article.excerpt || '';
-      siteName = article.siteName || new URL(normalizedUrl).hostname;
+      if (isWebnovelLocked) {
+        content = `
+<div class="locked-chapter-notice p-6 my-8 rounded-xl border border-amber-500/30 bg-amber-500/10 text-center">
+  <p class="text-lg font-semibold text-amber-600 dark:text-amber-400 mb-2">🔒 Chương này yêu cầu mở khóa (có phí) trên Webnovel.vn</p>
+  <p class="text-sm text-neutral-600 dark:text-neutral-400 mb-4">Nội dung chương này được bảo vệ bản quyền và cần xu để đọc trên trang gốc.</p>
+  <a href="${normalizedUrl}" target="_blank" rel="noopener noreferrer" class="inline-block px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium text-sm transition-colors">
+    Mở trên Webnovel.vn
+  </a>
+</div>`;
+      } else {
+        content = article?.content || '';
+      }
+
+      // Refine chapter title for cleaner reading experience
+      const webnovelChapter = document.querySelector('.reader__chapter');
+      if (webnovelChapter?.textContent?.trim()) {
+        articleTitle = webnovelChapter.textContent.trim();
+      } else {
+        const h1Text = document.querySelector('h1')?.textContent?.trim() || '';
+        if (h1Text && /(?:chương|chap|chapter)\s*\d+/i.test(h1Text)) {
+          const parts = h1Text.split(/\s+[-–—]\s+/);
+          if (parts.length > 1 && /(?:chương|chap|chapter)\s*\d+/i.test(parts[1])) {
+            articleTitle = parts[1].trim();
+          } else {
+            articleTitle = h1Text;
+          }
+        } else {
+          articleTitle = article?.title?.replace(/\s*\|.*$|\s*[-–—]\s*SSTruyen.*$/i, '')?.trim() || 'Untitled';
+        }
+      }
+      excerpt = article?.excerpt || '';
+      siteName = article?.siteName || new URL(normalizedUrl).hostname;
     }
 
     let normalizedNextUrl = nextUrl ? normalizeUrl(nextUrl) : null;
