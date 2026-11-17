@@ -258,7 +258,7 @@ async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): 
 
     // Specialized full chapter loader for sstruyen.pics using its backend API
     if (normNovelUrl.includes('sstruyen')) {
-      const novelIdMatch = novelRes.html.match(/novelId[\\"]*:\s*(\d+)/i);
+      const novelIdMatch = novelRes.html.match(/novelId[\\"]*:\s*(\d+)/i) || novelRes.html.match(/"id"\s*:\s*(\d+)\s*,\s*"name"/i);
       const novelId = novelIdMatch ? novelIdMatch[1] : null;
       const slugMatch = normNovelUrl.match(/\/truyen\/([^/]+)/);
       const slug = slugMatch ? slugMatch[1] : '';
@@ -268,50 +268,96 @@ async function fetchNovelOverview(novelUrl: string, currentTargetUrl?: string): 
           const browserHeaders = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
-            'Referer': 'https://sstruyen.pics/'
+            'Referer': 'https://sstruyen.pics/',
+            'Origin': 'https://sstruyen.pics'
           };
 
-          const firstRes = await fetch(`https://api.sstruyen.pics/novels/${novelId}/chapters?page=1&limit=50&sort=asc`, {
-            headers: browserHeaders,
-            signal: AbortSignal.timeout(6000)
-          });
+          const fetchPageData = async (p: number, bypass: boolean) => {
+            const apiUrl = `https://api.sstruyen.pics/novels/${novelId}/chapters?page=${p}&limit=50&sort=asc`;
+            if (!bypass) {
+              try {
+                const res = await fetch(apiUrl, { headers: browserHeaders, signal: AbortSignal.timeout(5000) });
+                if (res.ok) return await res.json();
+              } catch {}
+            }
+            try {
+              const res = await fetch(`https://r.jina.ai/${apiUrl}`, {
+                headers: { 'X-Return-Format': 'text', 'X-No-Cache': 'true' },
+                signal: AbortSignal.timeout(10000)
+              });
+              if (res.ok) {
+                const text = await res.text();
+                return JSON.parse(text);
+              }
+            } catch {}
+            return null;
+          };
 
-          if (firstRes.ok) {
-            const firstData = await firstRes.json();
+          // Try direct fetch first for page 1
+          let useBypass = false;
+          let firstData: { total?: number; chapters?: Array<{ id: number; name: string; slug: string }> } | null = null;
+          try {
+            const firstRes = await fetch(`https://api.sstruyen.pics/novels/${novelId}/chapters?page=1&limit=50&sort=asc`, {
+              headers: browserHeaders,
+              signal: AbortSignal.timeout(4000)
+            });
+            if (firstRes.ok) {
+              firstData = await firstRes.json();
+            } else {
+              useBypass = true;
+            }
+          } catch {
+            useBypass = true;
+          }
+
+          if (!firstData && useBypass) {
+            firstData = await fetchPageData(1, true);
+          }
+
+          if (firstData && typeof firstData.total === 'number') {
             const total = firstData.total || 0;
             const totalPages = Math.ceil(total / 50);
 
             const sstruyenChapters: { title: string; url: string }[] = [];
-            if (Array.isArray(firstData.chapters)) {
-              for (const ch of firstData.chapters) {
-                sstruyenChapters.push({
-                  title: ch.name,
-                  url: normalizeUrl(`https://sstruyen.pics/doc-truyen/${slug}-${ch.slug}-${ch.id}`)
-                });
-              }
-            }
-
-            for (let p = 2; p <= totalPages; p += 5) {
-              const batch = [];
-              for (let b = p; b < p + 5 && b <= totalPages; b++) {
-                batch.push(
-                  fetch(`https://api.sstruyen.pics/novels/${novelId}/chapters?page=${b}&limit=50&sort=asc`, {
-                    headers: browserHeaders,
-                    signal: AbortSignal.timeout(6000)
-                  })
-                    .then(r => r.ok ? r.json() : null)
-                    .catch(() => null)
-                );
-              }
-              const results = await Promise.all(batch);
-              for (const r of results) {
-                if (r && Array.isArray(r.chapters)) {
-                  for (const ch of r.chapters) {
+            const addChapters = (chList?: Array<{ id: number; name: string; slug: string }>) => {
+              if (Array.isArray(chList)) {
+                for (const ch of chList) {
+                  if (ch && ch.slug && ch.id) {
                     sstruyenChapters.push({
-                      title: ch.name,
+                      title: ch.name || `Chương ${ch.slug}`,
                       url: normalizeUrl(`https://sstruyen.pics/doc-truyen/${slug}-${ch.slug}-${ch.id}`)
                     });
                   }
+                }
+              }
+            };
+
+            addChapters(firstData.chapters);
+
+            const currentChapNum = currentTargetUrl ? getChapterNumber(currentTargetUrl) : null;
+            const targetPage = currentChapNum ? Math.ceil(currentChapNum / 50) : 1;
+
+            const pageSet = new Set<number>();
+            if (totalPages <= 25) {
+              for (let p = 2; p <= totalPages; p++) pageSet.add(p);
+            } else {
+              for (let p = 2; p <= Math.min(5, totalPages); p++) pageSet.add(p);
+              for (let p = Math.max(1, targetPage - 4); p <= Math.min(totalPages, targetPage + 4); p++) {
+                if (p > 1) pageSet.add(p);
+              }
+              for (let p = Math.max(1, totalPages - 2); p <= totalPages; p++) {
+                if (p > 1) pageSet.add(p);
+              }
+            }
+
+            const pagesToFetch = Array.from(pageSet).slice(0, 25);
+            const BATCH_SIZE = 8;
+            for (let i = 0; i < pagesToFetch.length; i += BATCH_SIZE) {
+              const batch = pagesToFetch.slice(i, i + BATCH_SIZE);
+              const results = await Promise.all(batch.map(p => fetchPageData(p, useBypass)));
+              for (const r of results) {
+                if (r && r.chapters) {
+                  addChapters(r.chapters);
                 }
               }
             }
@@ -632,8 +678,9 @@ export async function GET(request: NextRequest) {
             }
           }
         }
-        if (libraryChapters.length === 0 && novelUrl && !novelUrl.startsWith('local://')) {
-          // If the book hasn't been added to the library yet, attempt to load chapters from the novel overview page
+        const currentInList = libraryChapters.some((c: { url: string }) => normalizeUrl(c.url) === normalizedUrl);
+        if ((libraryChapters.length === 0 || (!currentInList && libraryChapters.length < 100)) && novelUrl && !novelUrl.startsWith('local://')) {
+          // If chapters list is empty or doesn't contain current chapter, attempt to load chapters from novel overview page
           try {
             const overview = await fetchNovelOverview(novelUrl, normalizedUrl);
             if (overview.chapters.length > 0) {
